@@ -1,0 +1,28 @@
+<RCC>
+  <qresource prefix="/">
+    <file>icons/app_icon.svg</file>
+    <file>icons/new_project.svg</file>
+    <file>icons/open_project.svg</file>
+    <file>icons/exit.svg</file>
+    <file>icons/terminal.svg</file>
+    <file>icons/netcat.svg</file>
+    <file>icons/add_machine.svg</file>
+    <file>icons/add_folder.svg</file>
+    <file>icons/new_note.svg</file>
+    <file>icons/copy.svg</file>
+    <file>icons/move_file.svg</file>
+    <file>icons/merge.svg</file>
+    <file>icons/rename.svg</file>
+    <file>icons/delete.svg</file>
+    <file>icons/cut.svg</file>
+    <file>icons/paste.svg</file>
+    <file>icons/execute.svg</file>
+    <file>icons/help.svg</file>
+    <file>icons/about.svg</file>
+    <file>icons/copy_image.svg</file>
+    <file>icons/deselect.svg</file>
+    <file>icons/folder_plain.svg</file>
+    <file>icons/image_file.svg</file>
+    <file>icons/markdown_file.svg</file>
+  </qresource>
+</RCC>

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>LinuxTermDialog</class>
+ <widget class="QWidget" name="LinuxTermDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>500</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Linux Terminal</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <item>
+    <!-- ~ Editor: TSynEdit -> remplacé par TerminalWidget, un vrai émulateur de
+         terminal adossé à un pty (cf. terminalwidget.h / pty.h / terminalscreen.h). -->
+    <widget class="TerminalWidget" name="terminal" native="true">
+    </widget>
+   </item>
+  </layout>
+
+  <action name="actionCopy">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/copy.svg</normaloff>:/icons/copy.svg</iconset></property>
+   <property name="text"><string>Copy</string></property>
+  </action>
+  <action name="actionPaste">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/paste.svg</normaloff>:/icons/paste.svg</iconset></property>
+   <property name="text"><string>Paste</string></property>
+  </action>
+  <action name="actionCopyImage">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/copy_image.svg</normaloff>:/icons/copy_image.svg</iconset></property>
+   <property name="text"><string>Copy Selection As Image</string></property>
+   <property name="shortcut"><string>Ctrl+Shift+S</string></property>
+  </action>
+  <action name="actionDeselect">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/deselect.svg</normaloff>:/icons/deselect.svg</iconset></property>
+   <property name="text"><string>Deselect</string></property>
+  </action>
+  <action name="actionRenameTerminal">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/rename.svg</normaloff>:/icons/rename.svg</iconset></property>
+   <property name="text"><string>Rename Terminal...</string></property>
+  </action>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>TerminalWidget</class>
+   <extends>QWidget</extends>
+   <header>terminalwidget.h</header>
+   <container>0</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

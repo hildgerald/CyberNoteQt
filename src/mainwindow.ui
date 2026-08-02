@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1124</width>
+    <height>668</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>CyberNotePas v1.0</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="horizontalLayout">
+    <property name="leftMargin"><number>2</number></property>
+    <property name="topMargin"><number>2</number></property>
+    <property name="rightMargin"><number>2</number></property>
+    <property name="bottomMargin"><number>2</number></property>
+    <item>
+     <widget class="QSplitter" name="mainSplitter">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+
+      <!-- ===================== Colonne gauche : Projet + Target ===================== -->
+      <widget class="QSplitter" name="leftSplitter">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+
+       <widget class="QTabWidget" name="tabProject">
+        <widget class="QWidget" name="tabProjectPage">
+         <attribute name="title">
+          <string>Project</string>
+         </attribute>
+         <layout class="QVBoxLayout" name="verticalLayout_project">
+          <property name="leftMargin"><number>0</number></property>
+          <property name="topMargin"><number>0</number></property>
+          <property name="rightMargin"><number>0</number></property>
+          <property name="bottomMargin"><number>0</number></property>
+          <item>
+           <widget class="QToolBar" name="toolBarFiles">
+            <property name="windowTitle"><string>TB_Files</string></property>
+            <addaction name="actionNewProjectTb"/>
+            <addaction name="actionOpenProjectTb"/>
+            <addaction name="separator"/>
+            <addaction name="actionAddMachine"/>
+            <addaction name="actionAddFolder"/>
+            <addaction name="actionNewNote"/>
+            <addaction name="separator"/>
+            <addaction name="actionTreeCopy"/>
+            <addaction name="actionTreePaste"/>
+            <addaction name="separator"/>
+            <addaction name="actionRename"/>
+            <addaction name="actionMakeCopy"/>
+            <addaction name="actionMoveFileInto"/>
+            <addaction name="actionMergeEntireFileWith"/>
+            <addaction name="separator"/>
+            <addaction name="actionDelete"/>
+           </widget>
+          </item>
+          <item>
+           <widget class="QTreeWidget" name="treeProject">
+            <property name="headerHidden">
+             <bool>true</bool>
+            </property>
+            <column>
+             <property name="text"><string>1</string></property>
+            </column>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </widget>
+
+       <widget class="QGroupBox" name="gbTarget">
+        <property name="title">
+         <string>Target</string>
+        </property>
+        <layout class="QVBoxLayout" name="verticalLayout_target">
+         <item>
+          <widget class="QTableWidget" name="tableTarget">
+           <property name="columnCount">
+            <number>2</number>
+           </property>
+           <column>
+            <property name="text"><string>Name</string></property>
+           </column>
+           <column>
+            <property name="text"><string>Value</string></property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+
+      <!-- ===================== Colonne centrale : Note (éditeur markdown) ===================== -->
+      <widget class="QTabWidget" name="tabNote">
+       <widget class="QWidget" name="tabNotePage">
+        <attribute name="title">
+         <string>Note</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="verticalLayout_note">
+         <property name="leftMargin"><number>0</number></property>
+         <property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property>
+         <property name="bottomMargin"><number>0</number></property>
+         <item>
+          <widget class="QToolBar" name="toolBarNotes">
+           <property name="windowTitle"><string>TB_Notes</string></property>
+           <addaction name="actionNoteCopy"/>
+           <addaction name="actionNoteCut"/>
+           <addaction name="actionNotePaste"/>
+           <addaction name="separator"/>
+           <addaction name="actionNoteExecute"/>
+          </widget>
+         </item>
+         <item>
+          <widget class="MarkdownEdit" name="mdEditor">
+           <property name="minimumSize">
+            <size>
+             <width>200</width>
+             <height>200</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+
+      <!-- ===================== Colonne droite : Bibliothèques ===================== -->
+      <widget class="QTabWidget" name="tabLibraries">
+       <widget class="QWidget" name="tabLibrariesPage">
+        <attribute name="title">
+         <string>Libraries</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="verticalLayout_library">
+         <property name="leftMargin"><number>0</number></property>
+         <property name="topMargin"><number>0</number></property>
+         <property name="rightMargin"><number>0</number></property>
+         <property name="bottomMargin"><number>0</number></property>
+         <item>
+          <widget class="QTreeWidget" name="treeLibrary">
+           <property name="headerHidden">
+            <bool>true</bool>
+           </property>
+           <column>
+            <property name="text"><string>1</string></property>
+           </column>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+
+     </widget>
+    </item>
+   </layout>
+  </widget>
+
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect><x>0</x><y>0</y><width>1124</width><height>24</height></rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title"><string>File</string></property>
+    <addaction name="actionNewProject"/>
+    <addaction name="actionOpenProject"/>
+    <addaction name="separator"/>
+    <addaction name="actionExit"/>
+   </widget>
+   <widget class="QMenu" name="menuTools">
+    <property name="title"><string>Tools</string></property>
+    <addaction name="actionNewLinuxTerm"/>
+    <addaction name="actionNewNetcatTerm"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title"><string>Help</string></property>
+    <addaction name="actionHelpContents"/>
+    <addaction name="separator"/>
+    <addaction name="actionAbout"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuTools"/>
+   <addaction name="menuHelp"/>
+  </widget>
+
+  <widget class="QStatusBar" name="statusbar"/>
+
+  <action name="actionNewProject">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/new_project.svg</normaloff>:/icons/new_project.svg</iconset></property>
+   <property name="text"><string>New Project</string></property>
+  </action>
+  <action name="actionOpenProject">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/open_project.svg</normaloff>:/icons/open_project.svg</iconset></property>
+   <property name="text"><string>Open Project</string></property>
+  </action>
+  <action name="actionExit">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/exit.svg</normaloff>:/icons/exit.svg</iconset></property>
+   <property name="text"><string>Exit</string></property>
+  </action>
+  <action name="actionNewLinuxTerm">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/terminal.svg</normaloff>:/icons/terminal.svg</iconset></property>
+   <property name="text"><string>Start New Linux Term</string></property>
+  </action>
+  <action name="actionNewNetcatTerm">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/netcat.svg</normaloff>:/icons/netcat.svg</iconset></property>
+   <property name="text"><string>Start New Netcat Term</string></property>
+  </action>
+
+  <action name="actionAddMachine">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/add_machine.svg</normaloff>:/icons/add_machine.svg</iconset></property>
+   <property name="text"><string>Add Machine</string></property>
+  </action>
+  <action name="actionAddFolder">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/add_folder.svg</normaloff>:/icons/add_folder.svg</iconset></property>
+   <property name="text"><string>Add Folder</string></property>
+  </action>
+  <action name="actionNewProjectTb">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/new_project.svg</normaloff>:/icons/new_project.svg</iconset></property>
+   <property name="text"><string>New Project</string></property>
+  </action>
+  <action name="actionOpenProjectTb">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/open_project.svg</normaloff>:/icons/open_project.svg</iconset></property>
+   <property name="text"><string>Open Project</string></property>
+  </action>
+  <action name="actionNewNote">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/new_note.svg</normaloff>:/icons/new_note.svg</iconset></property>
+   <property name="text"><string>New Note</string></property>
+  </action>
+  <action name="actionTreeCopy">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/copy.svg</normaloff>:/icons/copy.svg</iconset></property>
+   <property name="text"><string>Copy</string></property>
+   <property name="toolTip"><string>Copy (files or entire folders)</string></property>
+  </action>
+  <action name="actionTreePaste">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/paste.svg</normaloff>:/icons/paste.svg</iconset></property>
+   <property name="text"><string>Paste</string></property>
+  </action>
+  <action name="actionMakeCopy">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/copy.svg</normaloff>:/icons/copy.svg</iconset></property>
+   <property name="text"><string>Make a copy</string></property>
+  </action>
+  <action name="actionMoveFileInto">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/move_file.svg</normaloff>:/icons/move_file.svg</iconset></property>
+   <property name="text"><string>Move file into</string></property>
+  </action>
+  <action name="actionMergeEntireFileWith">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/merge.svg</normaloff>:/icons/merge.svg</iconset></property>
+   <property name="text"><string>Merge entire file with...</string></property>
+  </action>
+  <action name="actionRename">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/rename.svg</normaloff>:/icons/rename.svg</iconset></property>
+   <property name="text"><string>Rename</string></property>
+  </action>
+  <action name="actionDelete">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/delete.svg</normaloff>:/icons/delete.svg</iconset></property>
+   <property name="text"><string>Delete</string></property>
+  </action>
+
+  <action name="actionNoteCopy">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/copy.svg</normaloff>:/icons/copy.svg</iconset></property>
+   <property name="text"><string>Copy</string></property>
+  </action>
+  <action name="actionNoteCut">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/cut.svg</normaloff>:/icons/cut.svg</iconset></property>
+   <property name="text"><string>Cut</string></property>
+  </action>
+  <action name="actionNotePaste">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/paste.svg</normaloff>:/icons/paste.svg</iconset></property>
+   <property name="text"><string>Paste</string></property>
+  </action>
+  <action name="actionNoteExecute">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/execute.svg</normaloff>:/icons/execute.svg</iconset></property>
+   <property name="text"><string>Execute</string></property>
+  </action>
+
+  <action name="actionHelpContents">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/help.svg</normaloff>:/icons/help.svg</iconset></property>
+   <property name="text"><string>Help Contents</string></property>
+   <property name="shortcut"><string>F1</string></property>
+  </action>
+  <action name="actionAbout">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/about.svg</normaloff>:/icons/about.svg</iconset></property>
+   <property name="text"><string>About CyberNotePas</string></property>
+  </action>
+ </widget>
+
+
+ <!-- MarkdownEdit = notre widget custom (voir markdownedit.h), promu depuis QTextEdit.
+      Qt Designer affichera une zone QTextEdit classique pour cette place réservée. -->
+ <customwidgets>
+  <customwidget>
+   <class>MarkdownEdit</class>
+   <extends>QTextEdit</extends>
+   <header>markdownedit.h</header>
+  </customwidget>
+ </customwidgets>
+
+ <resources/>
+ <connections/>
+</ui>
