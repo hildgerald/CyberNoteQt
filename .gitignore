@@ -40,9 +40,12 @@
 *.app
 
 # Build directories
-build/
-Build/
-build-*/
+build/Exemple
+build/.qt/
+build/CyberNotePasQt_autogen
+build/CMakeFiles/
+build/CyberNotePasQt
+build/cybernotepas.conf
 
 # CMake generated files
 CMakeFiles/
@@ -57,6 +60,7 @@ compile_commands.json
 *.log
 *.bak
 *.swp
+*.conf
 
 # vcpkg
 vcpkg_installed/
