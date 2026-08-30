@@ -61,6 +61,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->treeProject, &QTreeWidget::itemClicked, this, &MainWindow::onTreeProjectItemClicked);
     connect(ui->treeProject, &QTreeWidget::itemChanged, this, &MainWindow::onTreeProjectItemChanged);
     connect(ui->treeProject, &QTreeWidget::currentItemChanged, this, &MainWindow::onTreeProjectCurrentItemChanged);
+    connect(ui->treeLibrary, &QTreeWidget::itemClicked, this, &MainWindow::onTreeLibraryItemClicked);
     connect(ui->treeLibrary, &QTreeWidget::itemDoubleClicked, this, &MainWindow::onTreeLibraryDoubleClicked);
 
     // Renommage inline : uniquement via F2 (évite le conflit avec le simple-clic qui
@@ -184,7 +185,7 @@ void MainWindow::onNewLinuxTerm()
 
     // ~ dossier de démarrage du terminal : le dossier actuellement sélectionné dans
     // l'arborescence Project, sinon la racine du projet ouvert, sinon le dossier de
-    // l'application (CyberNotePasQt), dans cet ordre de priorité.
+    // l'application (CyberNoteQt), dans cet ordre de priorité.
     QString startDir = readTreeviewFolderPath(ui->treeProject->currentItem());
     if (startDir.isEmpty() || !QDir(startDir).exists())
         startDir = currentProject;
@@ -727,6 +728,31 @@ void MainWindow::onTreeProjectCurrentItemChanged(QTreeWidgetItem *current, QTree
 }
 
 // ======================= Bibliothèque =======================
+
+void MainWindow::onTreeLibraryItemClicked(QTreeWidgetItem *item, int column)
+{
+    Q_UNUSED(column);
+    if (!item)
+        return;
+
+    const int type = item->data(0, RoleType).toInt();
+    if (type != ItemLibraryNote)
+        return;
+
+    const QString path = item->data(0, RolePath).toString();
+    if (path.isEmpty() || !QFileInfo(path).isFile())
+        return;
+
+    // L'onglet Preview est dédié à la note sélectionnée dans la bibliothèque.
+    // On recharge le même MarkdownEdit afin de bénéficier du rendu Markdown,
+    // des tableaux et des images relatives au dossier de la note.
+    ui->mdPreview->setReadOnly(true);
+    ui->mdPreview->loadFromMdFile(path);
+
+    const QString fileName = QFileInfo(path).fileName();
+    ui->tabLibraries->setTabText(1, QStringLiteral("Preview-%1").arg(fileName));
+    ui->tabLibraries->setCurrentIndex(1);
+}
 
 void MainWindow::onTreeLibraryDoubleClicked(QTreeWidgetItem *item, int column)
 {

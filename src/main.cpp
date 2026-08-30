@@ -5,8 +5,8 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    app.setApplicationName("CyberNotePasQt");
-    app.setOrganizationName("CyberNotePas");
+    app.setApplicationName("CyberNoteQt");
+    app.setOrganizationName("CyberNote");
     app.setWindowIcon(QIcon(":/icons/app_icon.svg")); // icône utilisée pour toutes les fenêtres/barre des tâches
 
     MainWindow w;

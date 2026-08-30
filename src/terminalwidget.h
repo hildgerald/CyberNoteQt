@@ -26,7 +26,7 @@ public:
     ~TerminalWidget() override;
 
     // ~ CreateShell : lance $SHELL (ou /bin/bash) sur le pty. workingDir : dossier de
-    // démarrage du shell (vide = dossier courant du processus CyberNotePasQt).
+    // démarrage du shell (vide = dossier courant du processus CyberNoteQt).
     void startShell(const QString &workingDir = QString());
 
     bool hasSelection() const;

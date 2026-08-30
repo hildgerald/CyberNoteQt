@@ -42,11 +42,11 @@ set(SOURCES
     resources/resources.qrc
 )
 
-qt_add_executable(CyberNotePasQt ${SOURCES})
+qt_add_executable(CyberNoteQt ${SOURCES})
 
-target_link_libraries(CyberNotePasQt PRIVATE Qt6::Widgets Qt6::Core Qt6::Gui Qt6::Network Qt6::Svg util)
+target_link_libraries(CyberNoteQt PRIVATE Qt6::Widgets Qt6::Core Qt6::Gui Qt6::Network Qt6::Svg util)
 
-target_include_directories(CyberNotePasQt PRIVATE src)
+target_include_directories(CyberNoteQt PRIVATE src)
 
 # Sur Kali/Linux, installe simplement les paquets suivants avant de builder :
 #   sudo apt install qt6-base-dev qt6-tools-dev qt6-tools-dev-tools cmake build-essential

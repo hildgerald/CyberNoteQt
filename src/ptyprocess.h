@@ -26,7 +26,7 @@ public:
 
     // Démarre `program` (ex: "/bin/bash") avec `args` sur un pty de taille rows x cols.
     // workingDir (optionnel) : dossier de démarrage du processus enfant (vide = hérite
-    // du dossier courant du processus CyberNotePasQt, comportement précédent).
+    // du dossier courant du processus CyberNoteQt, comportement précédent).
     bool start(const QString &program, const QStringList &args, int rows, int cols,
                const QString &workingDir = QString());
 

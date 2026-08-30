@@ -82,6 +82,7 @@ private slots:
                                           QTreeWidgetItem *previous);      // ~ TreeView1Editing (capture du nom avant édition)
 
     // --- Bibliothèque ---
+    void onTreeLibraryItemClicked(QTreeWidgetItem *item, int column);      // aperçu Markdown au simple clic
     void onTreeLibraryDoubleClicked(QTreeWidgetItem *item, int column);    // ~ TreeView2DblClick
 
     // --- Grille "Target" ---
