@@ -1,8 +1,10 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
 #include "linuxtermdialog.h"
+#include "netcattermdialog.h"
 #include "configfile.h"
 #include "helpdialog.h"
+#include "markdownedit.h"
 
 #include <QCloseEvent>
 #include <QMessageBox>
@@ -18,6 +20,8 @@
 #include <QRegularExpression>
 #include <QNetworkInterface>
 #include <QIcon>
+#include <QScrollBar>
+#include <QHash>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -32,6 +36,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->actionOpenProject, &QAction::triggered, this, &MainWindow::onOpenProject);
     connect(ui->actionExit,        &QAction::triggered, this, &MainWindow::onExit);
     connect(ui->actionNewLinuxTerm,&QAction::triggered, this, &MainWindow::onNewLinuxTerm);
+    connect(ui->actionNewNetcatTerm,&QAction::triggered, this, &MainWindow::onNewNetcatTerm);
 
     // --- Connexions menu Help ---
     connect(ui->actionHelpContents, &QAction::triggered, this, &MainWindow::onHelpContents);
@@ -78,6 +83,24 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&updateTimer, &QTimer::timeout, this, &MainWindow::onUpdateTimerTick);
     updateTimer.start();
 
+    // --- Explorateur de titres (onglet "Outline") ---
+    // Toute modification du texte (frappe, chargement d'une note, ajout depuis la
+    // bibliothèque...) relance un recalcul différé : 250 ms après la dernière modification.
+    outlineTimer.setSingleShot(true);
+    outlineTimer.setInterval(250);
+    connect(&outlineTimer, &QTimer::timeout, this, &MainWindow::refreshOutline);
+    connect(ui->mdEditor, &QTextEdit::textChanged, &outlineTimer, qOverload<>(&QTimer::start));
+    connect(ui->treeOutline, &QTreeWidget::itemClicked,   this, &MainWindow::onOutlineItemClicked);
+    connect(ui->treeOutline, &QTreeWidget::itemActivated, this, &MainWindow::onOutlineItemClicked); // Entrée au clavier
+    // On mémorise les nœuds repliés par l'utilisateur pour les retrouver après chaque reconstruction.
+    auto outlineKey = [](QTreeWidgetItem *it) { return it->data(0, Qt::UserRole + 1).toString(); };
+    connect(ui->treeOutline, &QTreeWidget::itemCollapsed, this, [this, outlineKey](QTreeWidgetItem *it) {
+        outlineCollapsed.insert(outlineKey(it));
+    });
+    connect(ui->treeOutline, &QTreeWidget::itemExpanded, this, [this, outlineKey](QTreeWidgetItem *it) {
+        outlineCollapsed.remove(outlineKey(it));
+    });
+
     // ~ TFMain.FormCreate
     pwdApplication = QCoreApplication::applicationDirPath() + "/";
     scanLibraryDisk(pwdApplication + "libraries/");
@@ -87,6 +110,90 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+// ---------------------------------------------------------------------------
+// Explorateur de titres (onglet "Outline")
+// ---------------------------------------------------------------------------
+
+void MainWindow::refreshOutline()
+{
+    const QList<MarkdownHeading> headings = ui->mdEditor->headings();
+
+    // Si aucun titre n'a changé de niveau ni de texte (ex: on a juste tapé dans un
+    // paragraphe), l'arbre est déjà à jour : on ne le reconstruit pas (pas de scintillement,
+    // la sélection et le défilement de l'arbre restent intacts).
+    QStringList signature;
+    signature.reserve(headings.size());
+    for (const MarkdownHeading &h : headings)
+        signature << QString::number(h.level) + QLatin1Char('|') + h.text;
+    if (signature == outlineSignature)
+        return;
+    outlineSignature = signature;
+
+    QTreeWidget *tree = ui->treeOutline;
+    const int scrollValue = tree->verticalScrollBar()->value();
+
+    // La sélection est retrouvée par son rang dans la liste plate des titres.
+    int selectedIndex = -1;
+    if (QTreeWidgetItem *cur = tree->currentItem())
+        selectedIndex = cur->data(0, Qt::UserRole).toInt();
+
+    QSignalBlocker blocker(tree); // setExpanded() émettrait itemExpanded/itemCollapsed
+    tree->clear();
+
+    // Construction de la hiérarchie : un titre devient l'enfant du titre précédent de
+    // niveau strictement inférieur (un "###" juste après un "#" se range sous ce "#").
+    QList<QTreeWidgetItem *> stack;
+    QList<int> stackLevels;
+    QHash<QString, int> occurrences; // pour distinguer deux titres identiques
+    QList<QTreeWidgetItem *> allItems;
+
+    for (int i = 0; i < headings.size(); ++i) {
+        const MarkdownHeading &h = headings.at(i);
+        while (!stack.isEmpty() && stackLevels.last() >= h.level) {
+            stack.removeLast();
+            stackLevels.removeLast();
+        }
+
+        QTreeWidgetItem *item = stack.isEmpty() ? new QTreeWidgetItem(tree)
+                                                : new QTreeWidgetItem(stack.last());
+        item->setText(0, h.text);
+        item->setToolTip(0, h.text);
+        item->setData(0, Qt::UserRole, i); // rang du titre dans headings()
+
+        const QString base = QString::number(h.level) + QLatin1Char('|') + h.text;
+        const int n = occurrences[base]++;
+        item->setData(0, Qt::UserRole + 1, base + QLatin1Char('#') + QString::number(n)); // clé de repli
+        allItems << item;
+
+        stack << item;
+        stackLevels << h.level;
+    }
+
+    for (QTreeWidgetItem *item : std::as_const(allItems)) {
+        item->setExpanded(!outlineCollapsed.contains(item->data(0, Qt::UserRole + 1).toString()));
+        if (item->data(0, Qt::UserRole).toInt() == selectedIndex)
+            tree->setCurrentItem(item);
+    }
+
+    tree->verticalScrollBar()->setValue(scrollValue);
+}
+
+void MainWindow::onOutlineItemClicked(QTreeWidgetItem *item, int)
+{
+    if (!item)
+        return;
+    const int index = item->data(0, Qt::UserRole).toInt(); // à lire AVANT un éventuel refresh (qui détruit les items)
+
+    // Si une modification récente du texte n'a pas encore été répercutée dans l'arbre,
+    // on le met à jour d'abord (le rang du titre est relatif à la liste courante).
+    if (outlineTimer.isActive()) {
+        outlineTimer.stop();
+        refreshOutline();
+    }
+
+    ui->mdEditor->revealHeading(index);
 }
 
 void MainWindow::buildContextMenus()
@@ -183,12 +290,17 @@ void MainWindow::onNewLinuxTerm()
     const QString name = QInputDialog::getText(this, tr("Enter the New Terminal Name"),
                                                 tr("Name :"), QLineEdit::Normal, QString(), &ok);
 
-    // ~ dossier de démarrage du terminal : le dossier actuellement sélectionné dans
-    // l'arborescence Project, sinon la racine du projet ouvert, sinon le dossier de
-    // l'application (CyberNoteQt), dans cet ordre de priorité.
-    QString startDir = readTreeviewFolderPath(ui->treeProject->currentItem());
+    // ~ dossier de démarrage du terminal : toujours <projet>/<machine>/, déterminé
+    // en remontant l'arborescence Project à partir de l'élément sélectionné (quel
+    // que soit le sous-dossier ouvert). Si aucun dossier <machine> ne peut être
+    // déduit (rien sélectionné, ou racine du projet sélectionnée), on retombe sur
+    // la racine du projet ouvert, puis le dossier personnel (home) de la machine
+    // courante, et en tout dernier recours le dossier de l'application (CyberNoteQt).
+    QString startDir = readTreeviewMachineFolderPath(ui->treeProject->currentItem());
     if (startDir.isEmpty() || !QDir(startDir).exists())
         startDir = currentProject;
+    if (startDir.isEmpty() || !QDir(startDir).exists())
+        startDir = QDir::homePath();
     if (startDir.isEmpty() || !QDir(startDir).exists())
         startDir = pwdApplication;
 
@@ -218,6 +330,34 @@ void MainWindow::onNewLinuxTerm()
         // ~ retire la fenêtre fermée de la liste (WA_DeleteOnClose la détruit tout seul) ;
         // comparaison de pointeur uniquement, obj peut déjà être partiellement détruit.
         openLinuxTerms.removeAll(static_cast<LinuxTermDialog *>(obj));
+    });
+
+    term->show();
+}
+
+void MainWindow::onNewNetcatTerm()
+{
+    // ~ pendant de onNewLinuxTerm pour "Tools > Start New Netcat Term" : ouvre une
+    // fenêtre Netcat (déconnectée par défaut, port 443) et ajoute une entrée dynamique
+    // dans le menu Tools pour lui redonner le focus.
+    auto *term = new NetcatTermDialog(this);
+    term->setAttribute(Qt::WA_DeleteOnClose);
+    term->resize(900, 600);
+
+    ++netcatTermCounter;
+    term->setFixedTitle(tr("Netcat Terminal %1").arg(netcatTermCounter));
+    openNetcatTerms.append(term);
+
+    QAction *menuEntry = ui->menuTools->addAction(term->windowTitle());
+    connect(menuEntry, &QAction::triggered, term, [term]() {
+        term->show();
+        term->raise();
+        term->activateWindow();
+    });
+    connect(term, &QWidget::windowTitleChanged, menuEntry, &QAction::setText);
+    connect(term, &QObject::destroyed, menuEntry, &QObject::deleteLater);
+    connect(term, &QObject::destroyed, this, [this](QObject *obj) {
+        openNetcatTerms.removeAll(static_cast<NetcatTermDialog *>(obj));
     });
 
     term->show();
@@ -970,6 +1110,30 @@ QString MainWindow::readTreeviewFolderPath(QTreeWidgetItem *item)
             result = parent->data(0, RolePath).toString();
     }
     return result;
+}
+
+QString MainWindow::readTreeviewMachineFolderPath(QTreeWidgetItem *item)
+{
+    // ~ l'arborescence Project a la forme <projet> / <machine> / <dossier> / ... :
+    // l'item racine (sans parent) est <projet>, ses enfants directs sont les
+    // dossiers <machine>. Quel que soit l'élément sélectionné (un <dossier>
+    // profondément imbriqué, un fichier, ou <machine> elle-même), on remonte
+    // jusqu'à ce niveau <machine> pour que le terminal s'ouvre toujours sur
+    // <projet>/<machine>/.
+    if (!item)
+        return QString();
+
+    QTreeWidgetItem *machineItem = item;
+    while (machineItem->parent() && machineItem->parent()->parent())
+        machineItem = machineItem->parent();
+
+    // Si l'élément remonté est la racine du projet elle-même (aucun niveau
+    // <machine> au-dessus, ex. rien de pertinent sélectionné), il n'y a pas de
+    // dossier machine à retourner.
+    if (!machineItem->parent())
+        return QString();
+
+    return machineItem->data(0, RolePath).toString();
 }
 
 void MainWindow::viewTargetInformation(const QString &fileName)

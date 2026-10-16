@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>NetcatTermDialog</class>
+ <widget class="QWidget" name="NetcatTermDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>500</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Netcat Terminal</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="leftMargin"><number>0</number></property>
+   <property name="topMargin"><number>0</number></property>
+   <property name="rightMargin"><number>0</number></property>
+   <property name="bottomMargin"><number>0</number></property>
+   <property name="spacing"><number>0</number></property>
+   <item>
+    <!-- Barre supérieure : bouton Connecter/Déconnecter, icône d'état, champ port -->
+    <layout class="QHBoxLayout" name="toolBarLayout">
+     <property name="leftMargin"><number>6</number></property>
+     <property name="topMargin"><number>6</number></property>
+     <property name="rightMargin"><number>6</number></property>
+     <property name="bottomMargin"><number>6</number></property>
+     <item>
+      <widget class="QPushButton" name="buttonConnect">
+       <property name="text"><string>Connect</string></property>
+       <property name="minimumWidth"><number>100</number></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="labelStatusIcon">
+       <property name="minimumSize"><size><width>20</width><height>20</height></size></property>
+       <property name="maximumSize"><size><width>20</width><height>20</height></size></property>
+       <property name="scaledContents"><bool>true</bool></property>
+       <property name="toolTip"><string>Disconnected</string></property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation"><enum>Qt::Horizontal</enum></property>
+       <property name="sizeHint"><size><width>20</width><height>20</height></size></property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="labelPort">
+       <property name="text"><string>Port :</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSpinBox" name="spinBoxPort">
+       <property name="minimum"><number>1</number></property>
+       <property name="maximum"><number>65535</number></property>
+       <property name="value"><number>443</number></property>
+       <property name="minimumWidth"><number>80</number></property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <!-- Terminal PTY : même widget que LinuxTermDialog, mais piloté pour exécuter
+         netcat en écoute au lieu d'un shell interactif. -->
+    <widget class="TerminalWidget" name="terminal" native="true">
+    </widget>
+   </item>
+  </layout>
+
+  <action name="actionCopy">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/copy.svg</normaloff>:/icons/copy.svg</iconset></property>
+   <property name="text"><string>Copy</string></property>
+  </action>
+  <action name="actionPaste">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/paste.svg</normaloff>:/icons/paste.svg</iconset></property>
+   <property name="text"><string>Paste</string></property>
+  </action>
+  <action name="actionCopyImage">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/copy_image.svg</normaloff>:/icons/copy_image.svg</iconset></property>
+   <property name="text"><string>Copy Selection As Image</string></property>
+   <property name="shortcut"><string>Ctrl+Shift+S</string></property>
+  </action>
+  <action name="actionDeselect">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/deselect.svg</normaloff>:/icons/deselect.svg</iconset></property>
+   <property name="text"><string>Deselect</string></property>
+  </action>
+  <action name="actionRenameTerminal">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/rename.svg</normaloff>:/icons/rename.svg</iconset></property>
+   <property name="text"><string>Rename Terminal...</string></property>
+  </action>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>TerminalWidget</class>
+   <extends>QWidget</extends>
+   <header>terminalwidget.h</header>
+   <container>0</container>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

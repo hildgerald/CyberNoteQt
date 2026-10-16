@@ -26,6 +26,9 @@ set(SOURCES
     src/linuxtermdialog.cpp
     src/linuxtermdialog.h
     src/linuxtermdialog.ui
+    src/netcattermdialog.cpp
+    src/netcattermdialog.h
+    src/netcattermdialog.ui
     src/ptyprocess.cpp
     src/ptyprocess.h
     src/terminalscreen.cpp

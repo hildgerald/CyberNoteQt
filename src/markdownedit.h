@@ -9,6 +9,16 @@
 class QAction;
 class MarkdownHighlighter;
 class QTextTable;
+class QTextBlock;
+
+// Un titre du document (ATX "# ..." ou Setext "texte / ===") tel qu'affiché dans
+// l'explorateur de titres (onglet "Outline").
+struct MarkdownHeading
+{
+    int level = 1;      // 1..5 (même plafond que MarkdownHighlighter)
+    QString text;       // texte du titre, sans les marqueurs "#" ni l'emphase (**, __, `...`)
+    int position = 0;   // position absolue du début du bloc dans le QTextDocument
+};
 
 /**
  * MarkdownEdit
@@ -67,6 +77,16 @@ public:
     bool isNoteModified() const { return noteModified; } // ~ NoteModified
 
     QString getCurrentLineTextContent() const; // ~ GetCurrentLineTextContent (ligne où se trouve le curseur)
+
+    // ~ nouveau : explorateur de titres (onglet "Outline").
+    // headings() parcourt le document courant et renvoie les titres dans l'ordre ; les
+    // lignes situées dans un bloc de code ``` ou dans un tableau sont ignorées.
+    QList<MarkdownHeading> headings() const;
+    // Place le curseur sur le titre n°index (index dans headings()) et le fait remonter en
+    // haut de la zone visible -- sauf si cela laisserait du vide sous la fin du document,
+    // auquel cas on s'arrête au défilement maximal (la fin du document reste alors tout en
+    // bas de la vue). Renvoie false si l'index est invalide.
+    bool revealHeading(int index);
 
     // ~ nouveau : actions supplémentaires (ex. "Exécuter") ajoutées au menu contextuel
     // standard construit par contextMenuEvent(), en plus du sous-menu "Table". Permet à

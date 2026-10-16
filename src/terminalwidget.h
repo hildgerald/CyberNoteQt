@@ -29,6 +29,25 @@ public:
     // démarrage du shell (vide = dossier courant du processus CyberNoteQt).
     void startShell(const QString &workingDir = QString());
 
+    // Lance un programme arbitraire (ex: "nc") avec ses arguments sur le pty, plutôt
+    // que le shell interactif. Utilisé par NetcatTermDialog pour piloter netcat en
+    // écoute tout en profitant du même rendu de terminal (couleurs, etc.).
+    // Peut être appelé plusieurs fois de suite sur le même TerminalWidget (ex: cycles
+    // connecter/déconnecter successifs) : chaque appel redémarre un pty propre.
+    void startProgram(const QString &program, const QStringList &args,
+                       const QString &workingDir = QString());
+
+    // Termine le programme en cours (shell ou programme lancé via startProgram) sans
+    // détruire le widget, pour permettre un redémarrage ultérieur (ex: Déconnecter).
+    void stopProgram();
+
+    bool isRunning() const;
+
+    // Réinitialise complètement l'écran (~ RIS, ESC c) : efface le contenu affiché et le
+    // scrollback. Utile avant de redémarrer un nouveau programme pour ne pas mélanger la
+    // sortie d'une session précédente avec la nouvelle.
+    void resetTerminal();
+
     bool hasSelection() const;
     QString selectedText() const;
 

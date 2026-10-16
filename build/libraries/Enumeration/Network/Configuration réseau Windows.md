@@ -1,0 +1,5 @@
+# Configuration IP
+```
+ipconfig /all
+```
+

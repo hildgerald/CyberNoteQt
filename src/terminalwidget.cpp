@@ -69,11 +69,44 @@ void TerminalWidget::startShell(const QString &workingDir)
     if (shell.isEmpty())
         shell = "/bin/bash";
 
+    startProgram(shell, {"-i"}, workingDir);
+}
+
+void TerminalWidget::startProgram(const QString &program, const QStringList &args,
+                                   const QString &workingDir)
+{
+    // Si un programme précédent tourne encore sur ce pty (ex: reconnexion sans avoir
+    // laissé le temps au signal `finished` de nettoyer), on le termine proprement avant
+    // d'en relancer un nouveau.
+    if (pty->isRunning())
+        pty->terminate();
+
     const int scrollBarW = m_scrollBar ? m_scrollBar->sizeHint().width() : 0;
     const int rows = std::max(1, height() / m_cellH);
     const int cols = std::max(1, (width() - scrollBarW) / m_cellW);
     screen->resizeScreen(rows, cols);
-    pty->start(shell, {"-i"}, rows, cols, workingDir);
+    pty->start(program, args, rows, cols, workingDir);
+}
+
+void TerminalWidget::stopProgram()
+{
+    if (pty->isRunning())
+        pty->terminate();
+}
+
+bool TerminalWidget::isRunning() const
+{
+    return pty && pty->isRunning();
+}
+
+void TerminalWidget::resetTerminal()
+{
+    // ESC c = RIS (Reset to Initial State) : géré nativement par TerminalScreen,
+    // efface écran + scrollback et remet les attributs par défaut.
+    // Note : "\x1b" et "c" sont séparés en deux littéraux concaténés, car 'c' est un
+    // chiffre hexadécimal valide -- "\x1bc" serait lu comme un seul échappement hors
+    // plage (\x1bc) plutôt que ESC suivi du caractère 'c'.
+    screen->feed(QByteArrayLiteral("\x1b" "c"));
 }
 
 void TerminalWidget::applySizeToScreenAndPty()

@@ -6,12 +6,14 @@
 #include <QTimer>
 #include <QString>
 #include <QStringList>
+#include <QSet>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
 
 class LinuxTermDialog;
+class NetcatTermDialog;
 class HelpDialog;
 
 // ~ Node.ImageIndex en Lazarus : type d'entrée d'arborescence, stocké dans
@@ -52,6 +54,7 @@ private slots:
 
     // --- Menu "Tools" ---
     void onNewLinuxTerm();        // ~ Start_NewLinuxTermClick
+    void onNewNetcatTerm();       // ~ Start_NewNetcatTermClick
 
     // --- Menu "Help" ---
     void onHelpContents();        // affiche HelpDialog
@@ -93,6 +96,10 @@ private slots:
     // --- Timer de sauvegarde automatique ---
     void onUpdateTimerTick();     // ~ Timer_UpdateTimer
 
+    // --- Explorateur de titres (onglet "Outline") ---
+    void refreshOutline();                                        // reconstruit l'arbre si les titres ont changé
+    void onOutlineItemClicked(QTreeWidgetItem *item, int column); // amène le titre en haut de l'éditeur
+
 private:
     Ui::MainWindow *ui;
 
@@ -104,15 +111,22 @@ private:
     QString treeViewOldNameEdit; // ~ TreeViewOldNameEdit
 
     int linuxTermCounter = 0;    // ~ FLinuxTermCounter
+    int netcatTermCounter = 0;   // ~ nouveau, pendant de linuxTermCounter pour les fenêtres Netcat
     QString targetOldValue;      // ~ SG_TargetOldValue
     QString targetFileName;      // ~ SG_TargetFileName
 
     QTimer updateTimer;          // ~ Timer_Update
 
+    // --- Explorateur de titres (nouveau) ---
+    QTimer outlineTimer;         // regroupe les frappes rapides avant de recalculer les titres
+    QStringList outlineSignature; // "niveau|texte" de chaque titre actuellement affiché (détecte un vrai changement)
+    QSet<QString> outlineCollapsed; // clés des nœuds repliés par l'utilisateur (conservées entre deux reconstructions)
+
     QMenu *popupMenuProject = nullptr;   // ~ PopupMenu_Project
     QMenu *popupMenuLibraries = nullptr; // ~ PopupMenu_Libraries
 
     QList<LinuxTermDialog *> openLinuxTerms; // remplace le Tag/Pointer bricolé en Pascal
+    QList<NetcatTermDialog *> openNetcatTerms; // pendant de openLinuxTerms pour les fenêtres Netcat
     HelpDialog *helpDialog = nullptr; // réutilisé entre les ouvertures (non modale)
 
     QString treeClipboardPath;   // ~ nouveau : chemin de l'élément copié (fichier OU dossier) dans Project
@@ -125,6 +139,7 @@ private:
     void scanLibraryDisk(const QString &startDirectory);
     QString readTreeviewPath(QTreeWidgetItem *item, int *imageIndexOut = nullptr);
     QString readTreeviewFolderPath(QTreeWidgetItem *item);
+    QString readTreeviewMachineFolderPath(QTreeWidgetItem *item);
     void viewTargetInformation(const QString &fileName);
     void searchTargetInformation(const QString &directory);
     void buildContextMenus();

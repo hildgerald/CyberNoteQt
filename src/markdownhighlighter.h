@@ -61,6 +61,13 @@ public:
     static bool isTableRowLine(const QString &text);
     static bool isTableSeparatorLine(const QString &text);
 
+    // Exposés pour MarkdownEdit::headings() (explorateur de titres / "Outline") : mêmes règles
+    // de détection que celles utilisées pour la coloration, afin que l'explorateur et
+    // l'affichage de l'éditeur ne divergent jamais.
+    static int detectHeaderLevel(const QString &text);               // ~ DetectHeaderLevel (titre ATX, 0 = non)
+    static int setextUnderlineLevel(const QString &trimmedText);     // 1 (===), 2 (---), 0 (ni l'un ni l'autre)
+    static bool isPlainParagraphCandidate(const QString &text);      // ligne "normale" pouvant servir de titre Setext
+
 protected:
     void highlightBlock(const QString &text) override;
 
@@ -98,13 +105,10 @@ private:
 
     int m_cursorPos = -1; // position absolue courante du curseur (-1 = inconnue -> tout masqué)
 
-    static int detectHeaderLevel(const QString &text);       // ~ DetectHeaderLevel
     static int langIndexFromString(const QString &lang);     // encode le langage dans le blockState
     static QString langNameFromIndex(int idx);
 
     // --- Structures de bloc (nouveau) ---
-    static int setextUnderlineLevel(const QString &trimmedText); // 1 (===), 2 (---), 0 (ni l'un ni l'autre)
-    static bool isPlainParagraphCandidate(const QString &text);  // ligne "normale" pouvant servir de titre Setext
     static bool isListMarkerPrefix(const QString &text, int *contentStartOut, bool *isTaskOut,
                                     bool *taskCheckedOut, int *taskContentStartOut);
 

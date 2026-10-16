@@ -17,6 +17,8 @@
 #include <QMenu>
 #include <QContextMenuEvent>
 #include <QKeyEvent>
+#include <QScrollBar>
+#include <QAbstractTextDocumentLayout>
 
 namespace {
 const QString kImageScheme = QStringLiteral("mdimg:");
@@ -289,6 +291,105 @@ void MarkdownEdit::updateBlockDecorations()
     cursor.endEditBlock();
 
     m_updatingBlockBackgrounds = false;
+}
+
+namespace {
+// Retire du texte de titre les marqueurs d'emphase / de code inline, pour un affichage
+// propre dans l'explorateur ("## **Gras** et `code`" -> "Gras et code").
+QString cleanHeadingText(QString t)
+{
+    t = t.trimmed();
+    // marqueurs de fermeture ATX optionnels : "## Titre ##"
+    static const QRegularExpression closingHashes(QStringLiteral(R"(\s+#+\s*$)"));
+    t.remove(closingHashes);
+    static const QRegularExpression emphasis(QStringLiteral(R"(\*\*|__|~~|==|`)"));
+    t.remove(emphasis);
+    return t.trimmed();
+}
+
+bool blockIsInsideTable(const QTextBlock &block)
+{
+    return QTextCursor(block).currentTable() != nullptr;
+}
+} // namespace
+
+QList<MarkdownHeading> MarkdownEdit::headings() const
+{
+    // ~ nouveau : mêmes règles que MarkdownHighlighter (ATX plafonné à 5 niveaux, titres Setext)
+    // et même gestion des blocs de code que updateBlockDecorations() (bascule sur chaque
+    // ligne ```), pour qu'un "# commentaire" dans un bloc de code ne soit pas pris pour un titre.
+    QList<MarkdownHeading> result;
+    bool inCode = false;
+
+    for (QTextBlock block = document()->begin(); block.isValid(); block = block.next()) {
+        const QString text = block.text();
+        const QString trimmed = text.trimmed();
+
+        if (MarkdownHighlighter::isFenceLineText(trimmed)) {
+            inCode = !inCode;
+            continue;
+        }
+        if (inCode)
+            continue;
+
+        MarkdownHeading h;
+        const int atxLevel = MarkdownHighlighter::detectHeaderLevel(text);
+        if (atxLevel > 0) {
+            int hashes = 0;
+            while (hashes < text.length() && text.at(hashes) == QLatin1Char('#'))
+                ++hashes;
+            h.level = atxLevel;
+            h.text = cleanHeadingText(text.mid(hashes + 1));
+        } else if (MarkdownHighlighter::isPlainParagraphCandidate(text)) {
+            const QTextBlock next = block.next();
+            if (!next.isValid())
+                continue;
+            const int setextLevel = MarkdownHighlighter::setextUnderlineLevel(next.text().trimmed());
+            if (setextLevel == 0)
+                continue;
+            h.level = setextLevel;
+            h.text = cleanHeadingText(trimmed);
+        } else {
+            continue;
+        }
+
+        if (h.text.isEmpty())
+            continue; // "# " en cours de frappe : pas encore de titre à afficher
+        if (blockIsInsideTable(block))
+            continue; // "# x" dans une cellule de tableau : ce n'est pas un titre
+
+        h.position = block.position();
+        result << h;
+    }
+    return result;
+}
+
+bool MarkdownEdit::revealHeading(int index)
+{
+    const QList<MarkdownHeading> list = headings();
+    if (index < 0 || index >= list.size())
+        return false;
+
+    const QTextBlock block = document()->findBlock(list.at(index).position);
+    if (!block.isValid())
+        return false;
+
+    // Le curseur se place sur le titre (on continue ensuite à éditer à cet endroit).
+    // setTextCursor() déclenche un ensureCursorVisible() ; on règle donc le défilement
+    // APRÈS, pour que notre positionnement soit le dernier mot.
+    QTextCursor cursor(block);
+    setTextCursor(cursor);
+
+    // Ordonnée du haut du bloc dans le document = valeur de défilement qui l'amène tout en
+    // haut de la zone visible. QScrollBar borne à maximum() : si le titre est trop près de
+    // la fin du document pour pouvoir être placé en haut, on s'arrête au défilement maximal,
+    // c'est-à-dire que la fin du document reste calée sur le bas de la vue (pas de vide).
+    const int wanted = qRound(document()->documentLayout()->blockBoundingRect(block).top());
+    QScrollBar *bar = verticalScrollBar();
+    bar->setValue(qBound(bar->minimum(), wanted, bar->maximum()));
+
+    setFocus();
+    return true;
 }
 
 QString MarkdownEdit::getCurrentLineTextContent() const
