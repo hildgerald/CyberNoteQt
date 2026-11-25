@@ -1,5 +1,0 @@
-# Configuration IP
-```
-ipconfig /all
-```
-

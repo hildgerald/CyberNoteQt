@@ -1,2 +1,0 @@
-
-unix-privesc-check

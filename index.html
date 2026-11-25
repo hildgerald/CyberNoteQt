@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090f1c">
+  <meta name="description" content="CyberNoteQt — Markdown notes, target management and integrated Linux terminals for penetration testing.">
+  <title>CyberNoteQt — Notes for the operator</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="CyberNoteQt home">
+      <span class="brand-mark"><span></span><span></span><span></span></span>
+      <span>CyberNote<span class="brand-accent">Qt</span></span>
+    </a>
+    <nav class="nav" id="nav">
+      <a href="#features">Features</a><a href="#workflow">Workflow</a><a href="#build">Get started</a>
+    </nav>
+    <a class="nav-cta" href="https://github.com/hildgerald/CyberNoteQt" target="_blank" rel="noopener">View on GitHub <span>↗</span></a>
+    <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap">
+      <div class="hero-copy">
+        <div class="eyebrow"><i></i> OPEN SOURCE · LINUX · QT 6</div>
+        <h1>Keep your focus.<br><span>Own your workflow.</span></h1>
+        <p class="hero-lead">A focused workspace for penetration testing. Write Markdown notes, organize targets, capture evidence and work in interactive Linux terminals — without losing context.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/hildgerald/CyberNoteQt" target="_blank" rel="noopener">Explore the repository <span>↗</span></a>
+          <a class="button button-ghost" href="#features">Discover features <span>↓</span></a>
+        </div>
+        <div class="hero-meta"><span><b class="dot"></b> Built with C++ &amp; Qt 6</span><span>MIT License</span><span>Linux desktop</span></div>
+      </div>
+      <div class="hero-visual" aria-label="Illustrative CyberNoteQt workspace">
+        <div class="window">
+          <div class="window-bar"><div class="traffic"><i></i><i></i><i></i></div><span>cybernote — assessment.md</span><span class="window-status">● LOCAL WORKSPACE</span></div>
+          <div class="workspace">
+            <aside class="tree">
+              <div class="pane-label">PROJECT</div>
+              <div class="tree-line active">▾ <span>⌁</span> Internal Assessment</div>
+              <div class="tree-line indent">▾ <span>▣</span> 10.10.10.25</div>
+              <div class="tree-line indent2 selected">▤ <span>◈</span> enumeration.md</div>
+              <div class="tree-line indent2">▤ findings.md</div>
+              <div class="tree-line">▸ <span>▣</span> 10.10.10.40</div>
+              <div class="pane-label library-label">LIBRARY</div>
+              <div class="tree-line">▸ <span>▧</span> Templates</div>
+              <div class="tree-line">▸ <span>▧</span> Checklists</div>
+            </aside>
+            <section class="editor">
+              <div class="editor-tabs"><span class="tab-active">enumeration.md</span><span>findings.md</span></div>
+              <div class="editor-content">
+                <div class="line"><em>01</em><strong class="md-h"># Enumeration</strong></div>
+                <div class="line"><em>02</em></div>
+                <div class="line"><em>03</em><span class="md-muted">## Target overview</span></div>
+                <div class="line"><em>04</em><span class="md-text">Host: </span><b class="md-green">10.10.10.25</b></div>
+                <div class="line"><em>05</em><span class="md-text">Status: </span><b class="md-green">In scope</b></div>
+                <div class="line"><em>06</em></div>
+                <div class="line"><em>07</em><span class="md-muted">## Open ports</span></div>
+                <div class="line"><em>08</em><span class="md-code">nmap -sC -sV -oN scan.txt 10.10.10.25</span></div>
+                <div class="line"><em>09</em></div>
+                <div class="line"><em>10</em><span class="md-muted">## Notes</span></div>
+                <div class="line"><em>11</em><span class="md-text">Review exposed services and document</span></div>
+                <div class="line"><em>12</em><span class="md-text">evidence before moving to exploitation.</span></div>
+                <div class="cursor"></div>
+              </div>
+            </section>
+          </div>
+          <div class="terminal">
+            <div class="terminal-head"><span><i></i> LINUX TERMINAL</span><span>bash · session 01</span></div>
+            <div class="terminal-body"><p><b>tester@lab</b>:<span class="term-path">~/assessment</span>$ nmap -sV 10.10.10.25</p><p class="term-output">Starting Nmap · Scan report for 10.10.10.25</p><p><b>tester@lab</b>:<span class="term-path">~/assessment</span>$ <span class="blink">▋</span></p></div>
+          </div>
+        </div>
+        <div class="float-tag tag-top"><span>⌘</span> Notes + terminal</div>
+        <div class="float-tag tag-bottom"><span>◉</span> Evidence-ready workflow</div>
+      </div>
+      <div class="hero-gridline"></div>
+    </section>
+
+    <section class="proof wrap">
+      <div><strong>01</strong><span>One workspace</span></div><div><strong>02</strong><span>Markdown-native</span></div><div><strong>03</strong><span>Interactive PTY</span></div><div><strong>04</strong><span>Open source</span></div>
+    </section>
+
+    <section class="section wrap" id="features">
+      <div class="section-heading"><div class="eyebrow">DESIGNED FOR THE FIELD</div><h2>Everything stays<br><span>in context.</span></h2><p>CyberNoteQt brings the essential parts of a technical assessment together, so your notes remain close to your targets, commands and evidence.</p></div>
+      <div class="feature-grid">
+        <article class="feature-card feature-wide"><div class="feature-icon">✎</div><div class="feature-kicker">01 / DOCUMENT</div><h3>Markdown editor</h3><p>Write structured notes with live formatting, syntax-highlighted code blocks, editable tables, an outline panel and inline images.</p><div class="mini-editor"><span># Finding — exposed service</span><span class="mini-green">**Severity:** High</span><span>`nmap -sC -sV target`</span><span class="mini-dim">![[evidence.png]]</span></div></article>
+        <article class="feature-card"><div class="feature-icon">⌘</div><div class="feature-kicker">02 / ORGANIZE</div><h3>Projects &amp; targets</h3><p>Structure assessments by project, host, folder and note. Keep target information and reusable templates close at hand.</p><div class="chips"><span>Projects</span><span>Hosts</span><span>Libraries</span></div></article>
+        <article class="feature-card"><div class="feature-icon">▣</div><div class="feature-kicker">03 / EXECUTE</div><h3>Integrated Linux terminal</h3><p>Use interactive PTY sessions with shell job control, terminal colors and full-screen tools such as vim, less and htop.</p><div class="terminal-mini"><span class="prompt">user@lab:~$</span> whoami<br><b>tester</b><span class="cursor-small">_</span></div></article>
+        <article class="feature-card"><div class="feature-icon">▧</div><div class="feature-kicker">04 / CAPTURE</div><h3>Evidence in your notes</h3><p>Paste screenshots from the clipboard, keep images with their Markdown notes and copy terminal selections as images.</p><div class="evidence-mini"><span>▧</span><div><b>evidence-01.png</b><small>Attached to current note</small></div><i>✓</i></div></article>
+        <article class="feature-card"><div class="feature-icon">⇄</div><div class="feature-kicker">05 / WORK FASTER</div><h3>Commands from notes</h3><p>Keep commands beside the procedure and run them directly from the current Markdown note.</p><div class="command-mini"><span>$</span> run selected command <b>↗</b></div></article>
+      </div>
+    </section>
+
+    <section class="workflow-section" id="workflow"><div class="wrap workflow">
+      <div><div class="eyebrow">A PRACTICAL WORKFLOW</div><h2>From first scan<br>to final report.</h2><p>Keep the assessment organized as it evolves. Your project tree, notes and terminal sessions live together in one Linux desktop application.</p><a class="text-link" href="https://github.com/hildgerald/CyberNoteQt" target="_blank" rel="noopener">See the source code <span>↗</span></a></div>
+      <div class="steps">
+        <div class="step"><b>01</b><div><h3>Create a project</h3><p>Set up an assessment and organize targets, folders and notes.</p></div><span>＋</span></div>
+        <div class="step"><b>02</b><div><h3>Document as you work</h3><p>Write Markdown, add commands, capture screenshots and record findings.</p></div><span>✎</span></div>
+        <div class="step"><b>03</b><div><h3>Run commands in context</h3><p>Open interactive Linux terminals without leaving your workspace.</p></div><span>⌘</span></div>
+        <div class="step"><b>04</b><div><h3>Keep reusable knowledge</h3><p>Reuse library notes and templates across authorized assessments.</p></div><span>▤</span></div>
+      </div>
+    </div></section>
+
+    <section class="section wrap build-section" id="build">
+      <div class="build-copy"><div class="eyebrow">GET STARTED</div><h2>Build it.<br><span>Make it yours.</span></h2><p>CyberNoteQt is open source and built with C++, Qt 6 and CMake. Clone the repository and build it on a Debian-based Linux system.</p><div class="build-badges"><span>Linux</span><span>C++</span><span>Qt 6</span><span>CMake</span><span>MIT</span></div><a class="button button-primary" href="https://github.com/hildgerald/CyberNoteQt" target="_blank" rel="noopener">Open GitHub repository <span>↗</span></a></div>
+      <div class="code-panel"><div class="code-title"><span><i></i><i></i><i></i></span><small>TERMINAL / BUILD FROM SOURCE</small><button id="copyBuild" type="button">COPY</button></div><pre><code><span class="code-comment"># Clone the project</span>
+git clone https://github.com/hildgerald/CyberNoteQt.git
+cd CyberNoteQt
+
+<span class="code-comment"># Install build dependencies (Kali / Debian)</span>
+sudo apt update
+sudo apt install qt6-base-dev qt6-tools-dev \
+  qt6-tools-dev-tools qt6-svg-dev cmake build-essential
+
+<span class="code-comment"># Configure and compile</span>
+cmake -S . -B build
+cmake --build build -j"$(nproc)"
+
+<span class="code-comment"># Launch</span>
+./build/CyberNotePasQt</code></pre><div class="code-note">Build instructions are based on the current project README. Check GitHub for updates.</div></div>
+    </section>
+
+    <section class="license-band"><div class="wrap license-inner"><div><div class="eyebrow">OPEN SOURCE</div><h2>Built in the open.<br>Ready to evolve.</h2></div><div class="license-info"><span class="license-mark">MIT</span><p>Use, study and adapt CyberNoteQt under the MIT License. Contributions, feedback and bug reports are welcome.</p><a href="https://github.com/hildgerald/CyberNoteQt/blob/main/LICENSE" target="_blank" rel="noopener">Read the license ↗</a></div></div></section>
+  </main>
+
+  <footer class="footer wrap"><a class="brand" href="#top"><span class="brand-mark"><span></span><span></span><span></span></span><span>CyberNote<span class="brand-accent">Qt</span></span></a><p>Made for focused security work. Use only on systems you are authorized to test.</p><div><a href="https://github.com/hildgerald/CyberNoteQt" target="_blank" rel="noopener">GitHub</a><span>·</span><a href="https://github.com/hildgerald/CyberNoteQt/issues" target="_blank" rel="noopener">Issues</a><span>·</span><a href="#top">Back to top ↑</a></div><small>© <span id="year"></span> CyberNoteQt · MIT License</small></footer>
+  <script src="assets/main.js"></script>
+</body>
+</html>
