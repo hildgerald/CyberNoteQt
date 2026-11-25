@@ -106,6 +106,7 @@ struct StyleInfo {
     char align = 0;
     int spaceBefore = -1, spaceAfter = -1;   // twips
     int numId = -1, numLevel = 0;            // numérotation liée au style (titres numérotés) ; -1 = aucune, 0 = désactivée
+    std::string shading;                     // ~ v2.6.2 : "RRGGBB" ombrage (fond) du paragraphe défini par le style ("" = aucun) ; ex. zones de code
     bool builtin = false;      // style ajouté par CyberNoteQt (absent du gabarit)
     std::string xml;           // définition XML (styles "builtin")
 };

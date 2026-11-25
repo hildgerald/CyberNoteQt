@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(CyberNotePasQt LANGUAGES CXX)
+project(CyberNotePasQt VERSION 2.6.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,6 +23,24 @@ set(SOURCES
     src/mainwindow.ui
     src/helpdialog.cpp
     src/helpdialog.h
+    src/docx_zip.cpp
+    src/docx_zip.h
+    src/docx_xml.cpp
+    src/docx_xml.h
+    src/docx_model.h
+    src/docx_internal.h
+    src/docx_common.cpp
+    src/docx_package.cpp
+    src/docx_save.cpp
+    src/docx_markdown.cpp
+    src/docxconvert.cpp
+    src/docxconvert.h
+    src/docxedit.cpp
+    src/docxedit.h
+    src/reportwindow.cpp
+    src/reportwindow.h
+    src/insertnotesdialog.cpp
+    src/insertnotesdialog.h
     src/linuxtermdialog.cpp
     src/linuxtermdialog.h
     src/linuxtermdialog.ui
@@ -42,6 +60,8 @@ set(SOURCES
     src/markdownkeywords.h
     src/configfile.cpp
     src/configfile.h
+    src/httpfileserver.cpp
+    src/httpfileserver.h
     resources/resources.qrc
 )
 

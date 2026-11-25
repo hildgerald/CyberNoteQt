@@ -135,6 +135,10 @@ void parseStyleSheet(const std::string &xml, StyleSheet &sheet, bool builtin)
                     const std::string v = jc->attrOr("w:val");
                     s.align = (v == "center") ? 'c' : (v == "right" || v == "end") ? 'r' : (v == "both" || v == "distribute") ? 'j' : 0;
                 }
+                if (const XmlNode *sh = pp->child("w:shd")) {   // ~ v2.6.2 : fond de paragraphe du style (zone de code...)
+                    const std::string fill = sh->attrOr("w:fill");
+                    if (!fill.empty() && fill != "auto") s.shading = fill;
+                }
                 if (const XmlNode *sp = pp->child("w:spacing")) {
                     if (sp->attr("w:before")) s.spaceBefore = toInt(sp->attrOr("w:before"));
                     if (sp->attr("w:after")) s.spaceAfter = toInt(sp->attrOr("w:after"));

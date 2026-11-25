@@ -57,6 +57,21 @@ std::vector<docx::XmlChild> unflatten(const QStringList &l)
     return v;
 }
 
+// ~ v2.6.2 : fond (ombrage) d'un paragraphe : <w:shd> direct du paragraphe, sinon celui de son style. "" = aucun.
+std::string paragraphFill(const std::vector<docx::XmlChild> &pprExtra, const docx::StyleInfo &st)
+{
+    for (const docx::XmlChild &e : pprExtra) {
+        if (e.first != "w:shd") continue;
+        const size_t p = e.second.find("w:fill=\"");
+        if (p == std::string::npos) break;
+        const size_t b = p + 8, q = e.second.find('\"', b);
+        if (q == std::string::npos) break;
+        const std::string fill = e.second.substr(b, q - b);
+        return (fill == "auto" || fill.size() != 6) ? std::string() : fill;
+    }
+    return st.shading.size() == 6 ? st.shading : std::string();
+}
+
 Qt::Alignment alignFrom(char a)
 {
     switch (a) {
@@ -209,6 +224,8 @@ private:
         bf.setTopMargin(st.spaceBefore >= 0 ? st.spaceBefore / 15.0 : 0.0);   // twips -> px (~)
         bf.setBottomMargin(st.spaceAfter >= 0 ? st.spaceAfter / 15.0 : 6.0);
         bf.setProperty(kPStyle, toQ(p.style));
+        const std::string fill = paragraphFill(p.pprExtra, st);
+        if (!fill.empty()) bf.setBackground(QBrush(colorFromHex(fill)));   // ~ v2.6.2 : fond gris des zones de code
         if (!p.pprExtra.empty()) bf.setProperty(kPExtra, flatten(p.pprExtra));
         if (!p.prefixXml.empty()) bf.setProperty(kPPrefix, toQ(p.prefixXml));
         if (!p.suffixXml.empty()) bf.setProperty(kPSuffix, toQ(p.suffixXml));
@@ -496,6 +513,10 @@ void DocxConverter::applyParagraphStyle(QTextCursor cursor, const std::string &s
     bf.setHeadingLevel(docx::headingLevelOfStyle(styleName));
     bf.setTopMargin(st.spaceBefore >= 0 ? st.spaceBefore / 15.0 : 0.0);
     bf.setBottomMargin(st.spaceAfter >= 0 ? st.spaceAfter / 15.0 : 6.0);
+    {   // ~ v2.6.2 : le fond suit le style (ajouté pour « Code Block », retiré en revenant à un autre style)
+        const std::string fill = paragraphFill(unflatten(cursor.blockFormat().property(kPExtra).toStringList()), st);
+        bf.setBackground(fill.empty() ? QBrush(Qt::NoBrush) : QBrush(colorFromHex(fill)));
+    }
     cursor.mergeBlockFormat(bf);
 
     QTextCursor sel(cursor.block());

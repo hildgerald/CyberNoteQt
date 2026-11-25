@@ -892,3 +892,22 @@ s'appliquent normalement à la liaison dynamique utilisée ici.
   n'est modifié (ce qui évitait de polluer l'historique d'annulation et d'afficher `` ```bash `` à droite
   quand le curseur était dedans).
 - Version portée à **2.6.1** (CMake, boîte « About », titre de la fenêtre).
+
+## Version 2.6.2 — Correctif : fond gris des zones de code (```) dans l'éditeur docx
+
+- **Bug corrigé** : lors de l'import d'un fichier Markdown dans le rapport .docx, les zones de code (```) étaient
+  bien converties en paragraphes de style « Code Block » (dont le style Word déclare un ombrage gris `F2F2F2`),
+  mais l'éditeur intégré n'affichait **aucun fond** : l'ombrage de paragraphe (`<w:shd>`) n'était lu ni dans
+  les styles, ni dans les propriétés du paragraphe, et n'était donc jamais traduit en fond de bloc Qt.
+  Le fond n'apparaissait que dans Word après enregistrement.
+- **Correction** :
+  - `StyleInfo::shading` (`docx_model.h`) : nouvel ombrage de paragraphe porté par un style, lu dans
+    `parseStyleSheet` (`docx_package.cpp`) et hérité via `basedOn` (`StyleSheet::resolved`, `docx_common.cpp`) ;
+  - `docxconvert.cpp` : nouvelle fonction `paragraphFill()` (ombrage direct du paragraphe, sinon celui du style)
+    appliquée au chargement (`paragraph()`) via `QTextBlockFormat::setBackground` ;
+  - le changement de style depuis la liste déroulante (`applyParagraphStyle`) ajoute le fond en passant à
+    « Code Block » et le retire en revenant à un autre style.
+- Fonctionne aussi pour tout style de gabarit utilisateur qui définit un ombrage de paragraphe, et pour les
+  paragraphes portant un `<w:shd>` direct. L'enregistrement est inchangé (aucun ombrage n'est dupliqué dans le
+  .docx : seul le XML d'origine ou le style est écrit).
+- Version portée à **2.6.2** (CMake, boîte « About », titre de la fenêtre).

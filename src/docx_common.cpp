@@ -99,6 +99,7 @@ StyleInfo StyleSheet::resolved(const StyleInfo &s) const
         if (r.align == 0) r.align = base->align;
         if (r.spaceBefore < 0) r.spaceBefore = base->spaceBefore;
         if (r.spaceAfter < 0) r.spaceAfter = base->spaceAfter;
+        if (r.shading.empty()) r.shading = base->shading;
         if (r.numId < 0) { r.numId = base->numId; r.numLevel = base->numLevel; }
         cur = base;
     }

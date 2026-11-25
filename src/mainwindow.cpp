@@ -536,7 +536,7 @@ void MainWindow::onHelpContents()
 void MainWindow::onAbout()
 {
     QMessageBox::about(this, tr("About CyberNotePas"),
-        tr("<h3>CyberNotePas v2.6.1 (portage Qt6/C++)</h3>"
+        tr("<h3>CyberNotePas v2.6.2 (portage Qt6/C++)</h3>"
            "<p>Outil de prise de notes structuré par projet pour le pentest / la sécurité "
            "offensive : arborescence de machines cibles, notes Markdown avec aperçu en direct, "
            "fiches d'information par cible, bibliothèque de commandes, et terminaux Linux "
