@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QMenu>
+#include <QImage>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class NetcatTermDialog; }
@@ -39,6 +40,14 @@ public:
 
     // Fixe le titre de la fenêtre de façon durable (~ LinuxTermDialog::setFixedTitle).
     void setFixedTitle(const QString &title);
+
+signals:
+    // Ctrl+Alt+S dans le terminal : image de la sélection à insérer dans la note ouverte
+    // (relais de TerminalWidget::selectionImageForNote, câblé par MainWindow).
+    void imageForNoteReady(const QImage &image);
+    // Ctrl+Alt+C dans le terminal : texte sélectionné à insérer dans la note ouverte
+    // (relais de TerminalWidget::selectionTextForNote, câblé par MainWindow).
+    void textForNoteReady(const QString &text);
 
 private slots:
     void onConnectButtonClicked();

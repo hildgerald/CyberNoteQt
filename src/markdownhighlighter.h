@@ -91,6 +91,7 @@ private:
     QTextCharFormat m_stringFormat;
     QTextCharFormat m_commentLineFormat;
     QTextCharFormat m_concealedFormat; // marqueur masqué (taille ~0 + transparent)
+    QTextCharFormat m_fenceLangFormat; // nom du langage d'une zone ```bash : petit, gris, affiché quand les balises sont masquées
 
     QTextCharFormat m_listMarkerFormat;      // -, *, +, 1. ...
     QTextCharFormat m_taskCheckboxFormat;    // [ ] / [x]

@@ -109,6 +109,13 @@ MarkdownHighlighter::MarkdownHighlighter(QTextDocument *parent)
     m_concealedFormat.setFontPointSize(0.5);
     m_concealedFormat.setForeground(Qt::transparent);
 
+    // Ligne ouvrante d'une zone ```bash quand le curseur est dehors : tout le texte de la ligne est
+    // rendu transparent (les ``` ET le nom du langage disparaissent), mais en 7 pt pour que la ligne
+    // ait une hauteur ; le nom du langage est redessiné en petit, à droite, par MarkdownEdit::paintEvent.
+    m_fenceLangFormat.setFontPointSize(7);
+    m_fenceLangFormat.setForeground(Qt::transparent);
+    m_fenceLangFormat.setFontFamilies({"Monospace"});
+
     // --- Structures de bloc (listes, citations, HR, Setext, tableaux) ---
     // Contrairement aux marqueurs d'emphase ci-dessus, ces marqueurs de structure
     // restent TOUJOURS visibles (stylés, jamais masqués/révélés selon le curseur).
@@ -355,12 +362,22 @@ void MarkdownHighlighter::highlightBlock(const QString &text)
         while (closeBlock.isValid() && !isFenceLineText(closeBlock.text().trimmed()))
             closeBlock = closeBlock.next();
         const int rangeStart = currentBlock().position();
-        const int rangeEnd = closeBlock.isValid() ? closeBlock.position() + closeBlock.length()
+        // Fin INCLUSE de la zone = fin de la ligne ``` fermante. (Avec position()+length() on obtenait
+        // le début de la ligne SUIVANTE : un curseur placé juste sous la zone la laissait "ouverte".)
+        const int rangeEnd = closeBlock.isValid() ? closeBlock.position() + closeBlock.length() - 1
                                                    : document()->characterCount();
         const bool cursorInside = (m_cursorPos >= rangeStart && m_cursorPos <= rangeEnd);
 
         const QString langStr = trimmed.mid(3).trimmed();
-        setFormat(0, text.length(), cursorInside ? m_fenceFormat : m_concealedFormat);
+        if (cursorInside) {
+            setFormat(0, text.length(), m_fenceFormat); // "```bash" affiché tel quel, à gauche
+        } else if (langStr.isEmpty()) {
+            setFormat(0, text.length(), m_concealedFormat); // balise entièrement masquée
+        } else {
+            // Texte invisible mais de hauteur "7 pt" : la ligne garde une fine bande dans laquelle
+            // MarkdownEdit::paintEvent dessine le nom du langage, en petit, à droite de la zone.
+            setFormat(0, text.length(), m_fenceLangFormat);
+        }
         setCurrentBlockState(StateCodeBlockBase + langIndexFromString(langStr));
         return;
     }

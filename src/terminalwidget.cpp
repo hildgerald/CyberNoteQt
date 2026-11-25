@@ -36,7 +36,11 @@ TerminalWidget::TerminalWidget(QWidget *parent)
     connect(screen, &TerminalScreen::hostResponse, this, [this](const QByteArray &data) { sendToShell(data); });
 
     pty = new Pty(this);
-    connect(pty, &Pty::readyRead, this, [this](const QByteArray &data) { screen->feed(data); });
+    connect(pty, &Pty::readyRead, this, [this](const QByteArray &data) {
+        screen->feed(data);
+        if (!m_captures.isEmpty())
+            feedCaptures(data);
+    });
     connect(pty, &Pty::finished, this, &TerminalWidget::onPtyFinished);
 
     // Ascenseur vertical (scrollback), à droite du widget. Positionné manuellement dans
@@ -367,9 +371,29 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event)
 {
     const auto mods = event->modifiers();
 
+    // Ctrl+C : la commande suivie est interrompue, le shell n'affichera jamais le marqueur de fin
+    // (bash abandonne le reste de la ligne) -> on rend tout de suite la sortie partielle.
+    if (!m_captures.isEmpty() && (mods & Qt::ControlModifier) && !(mods & (Qt::ShiftModifier | Qt::AltModifier))
+        && event->key() == Qt::Key_C)
+        finishAllCaptures(130);
+
     // Ctrl+Shift+S : copie la SÉLECTION en cours sous forme d'image dans le presse-papier
     if ((mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier) && event->key() == Qt::Key_S) {
         copySelectionAsImage();
+        event->accept();
+        return;
+    }
+    // Ctrl+Alt+S : même image, mais insérée directement dans la note ouverte (v1.4.0)
+    if ((mods & Qt::ControlModifier) && (mods & Qt::AltModifier) && !(mods & Qt::ShiftModifier)
+        && event->key() == Qt::Key_S) {
+        copySelectionAsImageToNote();
+        event->accept();
+        return;
+    }
+    // Ctrl+Alt+C : texte sélectionné inséré directement dans la note ouverte (v1.5.0)
+    if ((mods & Qt::ControlModifier) && (mods & Qt::AltModifier) && !(mods & Qt::ShiftModifier)
+        && event->key() == Qt::Key_C) {
+        copySelectionTextToNote();
         event->accept();
         return;
     }
@@ -459,7 +483,10 @@ QString TerminalWidget::selectedText() const
     const QPoint &lo = (m_selStart.y() <= m_selEnd.y()) ? m_selStart : m_selEnd;
     const QPoint &hi = (m_selStart.y() <= m_selEnd.y()) ? m_selEnd : m_selStart;
 
-    QStringList lines;
+    // Une ligne affichée qui n'est que la SUITE d'un retour à la ligne automatique (texte
+    // plus long que la largeur du terminal) est re-jointe à la précédente : le texte copié
+    // ne contient un saut de ligne que là où il y en a eu un vrai.
+    QString out;
     for (int gl = selMinLine; gl <= selMaxLine; ++gl) {
         const TermLine &line = lineAtGlobal(gl);
         int colStart = 0, colEnd = line.size();
@@ -470,9 +497,15 @@ QString TerminalWidget::selectedText() const
         QString text;
         for (int c = colStart; c < colEnd && c < line.size(); ++c)
             text += line.at(c).ch;
-        lines << text.replace(QRegularExpression("\\s+$"), QString()); // rtrim
+
+        const bool continuesOnNextLine = (gl < selMaxLine) && !line.isEmpty() && line.last().wrapped;
+        if (!continuesOnNextLine)
+            text.replace(QRegularExpression("\\s+$"), QString()); // rtrim (sauf ligne coupée : les espaces y sont réels)
+        out += text;
+        if (gl < selMaxLine && !continuesOnNextLine)
+            out += QLatin1Char('\n');
     }
-    return lines.join('\n');
+    return out;
 }
 
 void TerminalWidget::copySelection()
@@ -498,13 +531,19 @@ void TerminalWidget::pasteFromClipboard()
     sendToShell(data);
 }
 
-void TerminalWidget::copySelectionAsImage()
+QImage TerminalWidget::renderSelectionImage() const
 {
     // Ctrl+Shift+S : rend uniquement les caractères sélectionnés sous forme d'image
     // (les cellules hors sélection sur les lignes concernées restent en fond neutre),
     // conservant l'alignement en colonnes tel qu'affiché à l'écran.
+    //
+    // Depuis la v1.3.0 : la largeur de l'image n'est plus celle du terminal, mais celle du
+    // texte le plus long de la sélection (dernier caractère non blanc) + une marge totale
+    // de 16 pixels (8 px de chaque côté), pour éviter des captures inutilement larges.
     if (!m_hasSelection)
-        return;
+        return QImage();
+
+    constexpr int kMarginPx = 16; // marge horizontale totale (répartie moitié gauche / moitié droite)
 
     const int selMinLine = std::min(m_selStart.y(), m_selEnd.y());
     const int selMaxLine = std::max(m_selStart.y(), m_selEnd.y());
@@ -513,29 +552,58 @@ void TerminalWidget::copySelectionAsImage()
     const QPoint &hi = (m_selStart.y() <= m_selEnd.y()) ? m_selEnd : m_selStart;
 
     const int nLines = selMaxLine - selMinLine + 1;
-    const int cols = screen->cols();
-    const QImage::Format fmt = QImage::Format_ARGB32_Premultiplied;
-    QImage image(cols * m_cellW, nLines * m_cellH, fmt);
-    image.fill(Qt::black);
 
-    QPainter painter(&image);
-    painter.setFont(m_font);
-
-    int maxColUsed = 0;
-    for (int gl = selMinLine; gl <= selMaxLine; ++gl) {
-        const TermLine &line = lineAtGlobal(gl);
-        int colStart = 0, colEnd = line.size();
+    // Plage de colonnes sélectionnée [colStart, colEnd) pour une ligne globale donnée.
+    auto columnRange = [&](int gl, const TermLine &line, int &colStart, int &colEnd) {
+        colStart = 0;
+        colEnd = line.size();
         if (singleLine) { colStart = std::min(lo.x(), hi.x()); colEnd = std::max(lo.x(), hi.x()); }
         else if (gl == selMinLine) { colStart = lo.x(); colEnd = line.size(); }
         else if (gl == selMaxLine) { colStart = 0; colEnd = hi.x(); }
+        colEnd = std::min(colEnd, static_cast<int>(line.size()));
+    };
+
+    // Passe 1 : largeur (en colonnes) du texte le plus long = dernier caractère non blanc
+    // de chaque ligne, relativement au début de sélection de cette ligne.
+    int maxTextCols = 0;
+    for (int gl = selMinLine; gl <= selMaxLine; ++gl) {
+        const TermLine &line = lineAtGlobal(gl);
+        int colStart, colEnd;
+        columnRange(gl, line, colStart, colEnd);
+        for (int c = colEnd - 1; c >= colStart; --c) {
+            const QChar ch = line.at(c).ch;
+            if (!ch.isNull() && !ch.isSpace()) {
+                maxTextCols = std::max(maxTextCols, (c - colStart) + 1);
+                break;
+            }
+        }
+    }
+    if (maxTextCols == 0)
+        return QImage(); // sélection entièrement blanche : rien d'utile à copier
+
+    const QImage::Format fmt = QImage::Format_ARGB32_Premultiplied;
+    QImage image(maxTextCols * m_cellW + kMarginPx, nLines * m_cellH, fmt);
+    image.fill(Qt::black);
+
+    // Passe 2 : rendu, décalé de la demi-marge à gauche.
+    QPainter painter(&image);
+    painter.setFont(m_font);
+    const int xOffset = kMarginPx / 2;
+
+    for (int gl = selMinLine; gl <= selMaxLine; ++gl) {
+        const TermLine &line = lineAtGlobal(gl);
+        int colStart, colEnd;
+        columnRange(gl, line, colStart, colEnd);
 
         const int y = (gl - selMinLine) * m_cellH;
-        for (int c = colStart; c < colEnd && c < line.size(); ++c) {
+        for (int c = colStart; c < colEnd; ++c) {
+            if ((c - colStart) >= maxTextCols)
+                break; // au-delà du texte le plus long : espaces de fin, non rendus
             const TermCell &cell = line.at(c);
             QRgb fg = cell.fg, bg = cell.bg;
             if (cell.inverse) std::swap(fg, bg);
 
-            const QRect cellRect((c - colStart) * m_cellW, y, m_cellW, m_cellH);
+            const QRect cellRect(xOffset + (c - colStart) * m_cellW, y, m_cellW, m_cellH);
             painter.fillRect(cellRect, QColor(bg));
             if (cell.ch != QLatin1Char(' ') && !cell.ch.isNull()) {
                 QFont f = m_font;
@@ -545,15 +613,39 @@ void TerminalWidget::copySelectionAsImage()
                 painter.setPen(QColor(fg));
                 painter.drawText(cellRect.x(), y + m_ascent, cell.ch);
             }
-            maxColUsed = std::max(maxColUsed, (c - colStart) + 1);
         }
     }
     painter.end();
 
-    if (maxColUsed > 0 && maxColUsed < cols)
-        image = image.copy(0, 0, maxColUsed * m_cellW, nLines * m_cellH);
+    return image;
+}
 
-    QGuiApplication::clipboard()->setImage(image);
+void TerminalWidget::copySelectionAsImage()
+{
+    // Ctrl+Shift+S : image de la sélection dans le presse-papier.
+    const QImage image = renderSelectionImage();
+    if (!image.isNull())
+        QGuiApplication::clipboard()->setImage(image);
+}
+
+void TerminalWidget::copySelectionAsImageToNote()
+{
+    // Ctrl+Alt+S : même image que Ctrl+Shift+S, mais au lieu du presse-papier elle est
+    // transmise (signal) à MainWindow qui l'insère dans la note ouverte, à la ligne
+    // suivant la position du curseur.
+    const QImage image = renderSelectionImage();
+    if (!image.isNull())
+        emit selectionImageForNote(image);
+}
+
+void TerminalWidget::copySelectionTextToNote()
+{
+    // Ctrl+Alt+C : le texte sélectionné (même contenu que Ctrl+Shift+C) est transmis
+    // (signal) à MainWindow qui l'insère dans la note ouverte, à la ligne suivant la
+    // position du curseur.
+    const QString text = selectedText();
+    if (!text.isEmpty())
+        emit selectionTextForNote(text);
 }
 
 void TerminalWidget::clearSelection()
@@ -569,4 +661,152 @@ void TerminalWidget::sendCommand(const QString &command)
     resetScrollToBottom();
     sendToShell(command.toUtf8());
     sendToShell(QByteArrayLiteral("\r"));
+}
+
+// ======================= Capture de la sortie d'une commande (v2.6.0) =======================
+
+namespace {
+// Retire le commentaire shell final ("cmd # note") : un '#' hors guillemets, en début de ligne ou
+// précédé d'un espace. Sans ça, le marqueur de fin ajouté après la commande serait avalé par le
+// commentaire.
+QString stripShellComment(const QString &s)
+{
+    bool sq = false, dq = false;
+    for (int i = 0; i < s.size(); ++i) {
+        const QChar c = s.at(i);
+        if (c == QLatin1Char('\\') && !sq) {
+            ++i;
+            continue;
+        }
+        if (c == QLatin1Char('\'') && !dq)
+            sq = !sq;
+        else if (c == QLatin1Char('"') && !sq)
+            dq = !dq;
+        else if (c == QLatin1Char('#') && !sq && !dq && (i == 0 || s.at(i - 1).isSpace()))
+            return s.left(i);
+    }
+    return s;
+}
+
+constexpr int kCaptureMaxBytes = 8 * 1024 * 1024;
+}
+
+bool TerminalWidget::sendCommandCapture(const QString &command, int jobId)
+{
+    QString cmd = stripShellComment(command).trimmed();
+    while (cmd.endsWith(QLatin1Char(';')))
+        cmd = cmd.left(cmd.size() - 1).trimmed();
+
+    if (cmd.isEmpty() || cmd.endsWith(QLatin1Char('\\')) || cmd.endsWith(QLatin1Char('|'))
+        || cmd.endsWith(QLatin1String("&&"))) {
+        sendCommand(command);
+        return false;
+    }
+
+    // "cmd &" (arrière-plan) ne peut pas être suivi de "; " (erreur de syntaxe) : simple espace.
+    const QString sep = cmd.endsWith(QLatin1Char('&')) ? QStringLiteral(" ") : QStringLiteral("; ");
+    const QString id = QString::number(jobId);
+    const QString line = QStringLiteral("printf '\\033]777;S;") + id + QStringLiteral("\\007'; ")
+                         + cmd + sep
+                         + QStringLiteral("printf '\\033]777;D;") + id + QStringLiteral(";%d\\007' $?");
+
+    Capture c;
+    c.id = jobId;
+    m_captures.append(c);
+    sendCommand(line);
+    return true;
+}
+
+void TerminalWidget::feedCaptures(const QByteArray &data)
+{
+    for (int i = 0; i < m_captures.size();) {
+        Capture &c = m_captures[i];
+        const QByteArray id = QByteArray::number(c.id);
+        c.buf += data;
+
+        if (!c.started) {
+            // Le marqueur de début n'est émis qu'au lancement de la commande : ce qui précède est
+            // l'écho de la ligne tapée (qui contient le TEXTE du marqueur, pas l'octet ESC).
+            const QByteArray startMark = QByteArrayLiteral("\x1b]777;S;") + id + QByteArrayLiteral("\x07");
+            const int ix = c.buf.indexOf(startMark);
+            if (ix >= 0) {
+                c.started = true;
+                c.buf = c.buf.mid(ix + startMark.size());
+            } else if (c.buf.size() > 65536) {
+                c.buf = c.buf.right(startMark.size()); // jamais démarré : on ne garde que de quoi recoller un marqueur coupé
+            }
+        }
+
+        bool done = false;
+        int status = 0;
+        if (c.started) {
+            const QByteArray endMark = QByteArrayLiteral("\x1b]777;D;") + id + QByteArrayLiteral(";");
+            const int ix = c.buf.indexOf(endMark);
+            if (ix >= 0) {
+                const int bel = c.buf.indexOf('\x07', ix + endMark.size());
+                if (bel >= 0) {
+                    status = c.buf.mid(ix + endMark.size(), bel - ix - endMark.size()).toInt();
+                    c.buf.truncate(ix);
+                    done = true;
+                }
+            } else if (c.buf.size() > kCaptureMaxBytes) {
+                c.buf = c.buf.right(kCaptureMaxBytes); // sortie énorme : on garde la fin
+            }
+        }
+
+        if (done) {
+            const Capture fin = m_captures.takeAt(i);
+            emit commandCaptured(fin.id, status, renderCapturedOutput(fin.buf));
+        } else {
+            ++i;
+        }
+    }
+}
+
+void TerminalWidget::finishAllCaptures(int exitCode)
+{
+    const QList<Capture> pending = m_captures;
+    m_captures.clear();
+    for (const Capture &c : pending) {
+        // Pas encore démarrée (ex. attente d'un mot de passe sudo) : rien à rendre.
+        emit commandCaptured(c.id, exitCode, c.started ? renderCapturedOutput(c.buf) : QString());
+    }
+}
+
+QString TerminalWidget::renderCapturedOutput(const QByteArray &raw) const
+{
+    // Rejoue les octets bruts (couleurs, retours chariot, effacements...) dans un écran
+    // temporaire de même largeur que le terminal, puis lit le texte obtenu (scrollback + écran).
+    TerminalScreen tmp(200, screen->cols());
+    tmp.feed(raw);
+
+    QStringList lines;
+    QString current;
+    auto pushLine = [&](const TermLine &l) {
+        QString text;
+        text.reserve(l.size());
+        for (const TermCell &cell : l)
+            text += cell.ch;
+        const bool wrapped = !l.isEmpty() && l.last().wrapped;
+        current += text;
+        if (!wrapped) {
+            while (current.endsWith(QLatin1Char(' ')))
+                current.chop(1);
+            lines << current;
+            current.clear();
+        }
+    };
+    for (const TermLine &l : tmp.scrollback())
+        pushLine(l);
+    for (int r = 0; r < tmp.rows(); ++r)
+        pushLine(tmp.lineAt(r));
+    if (!current.isEmpty())
+        lines << current;
+
+    while (!lines.isEmpty() && lines.last().trimmed().isEmpty())
+        lines.removeLast();
+    int first = 0;
+    while (first < lines.size() && lines.at(first).trimmed().isEmpty())
+        ++first;
+    return lines.mid(first).join(QLatin1Char('\n'));
 }

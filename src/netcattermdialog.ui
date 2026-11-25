@@ -82,6 +82,16 @@
    <property name="text"><string>Copy Selection As Image</string></property>
    <property name="shortcut"><string>Ctrl+Shift+S</string></property>
   </action>
+  <action name="actionCopyImageToNote">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/copy_image.svg</normaloff>:/icons/copy_image.svg</iconset></property>
+   <property name="text"><string>Copy Selection As Image Into Note</string></property>
+   <property name="shortcut"><string>Ctrl+Alt+S</string></property>
+  </action>
+  <action name="actionCopyTextToNote">
+   <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/copy.svg</normaloff>:/icons/copy.svg</iconset></property>
+   <property name="text"><string>Copy Selection As Text Into Note</string></property>
+   <property name="shortcut"><string>Ctrl+Alt+C</string></property>
+  </action>
   <action name="actionDeselect">
    <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/deselect.svg</normaloff>:/icons/deselect.svg</iconset></property>
    <property name="text"><string>Deselect</string></property>

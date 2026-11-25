@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>CyberNoteQt v1.2.0</string>
+   <string>CyberNoteQt v2.6.1</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QHBoxLayout" name="horizontalLayout">
@@ -64,6 +64,54 @@
           </item>
           <item>
            <widget class="QTreeWidget" name="treeProject">
+            <property name="headerHidden">
+             <bool>true</bool>
+            </property>
+            <column>
+             <property name="text"><string>1</string></property>
+            </column>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="tabToolsPage">
+         <attribute name="title">
+          <string>tools</string>
+         </attribute>
+         <layout class="QVBoxLayout" name="verticalLayout_tools">
+          <property name="leftMargin"><number>0</number></property>
+          <property name="topMargin"><number>0</number></property>
+          <property name="rightMargin"><number>0</number></property>
+          <property name="bottomMargin"><number>0</number></property>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_toolsServer">
+            <item>
+             <widget class="QPushButton" name="toolsConnectButton">
+              <property name="text"><string>connect</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="labelToolsPort">
+              <property name="text"><string>Port :</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="toolsPortSpin">
+              <property name="minimum"><number>1</number></property>
+              <property name="maximum"><number>65535</number></property>
+              <property name="value"><number>80</number></property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="horizontalSpacer_tools">
+              <property name="orientation"><enum>Qt::Horizontal</enum></property>
+              <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QTreeWidget" name="treeTools">
             <property name="headerHidden">
              <bool>true</bool>
             </property>
@@ -188,9 +236,6 @@
          <property name="bottomMargin"><number>0</number></property>
          <item>
           <widget class="MarkdownEdit" name="mdPreview">
-           <property name="readOnly">
-            <bool>true</bool>
-           </property>
            <property name="minimumSize">
             <size>
              <width>200</width>
@@ -216,6 +261,8 @@
     <property name="title"><string>File</string></property>
     <addaction name="actionNewProject"/>
     <addaction name="actionOpenProject"/>
+    <addaction name="separator"/>
+    <addaction name="actionExportDocx"/>
     <addaction name="separator"/>
     <addaction name="actionExit"/>
    </widget>
@@ -244,6 +291,9 @@
   <action name="actionOpenProject">
    <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/open_project.svg</normaloff>:/icons/open_project.svg</iconset></property>
    <property name="text"><string>Open Project</string></property>
+  </action>
+  <action name="actionExportDocx">
+   <property name="text"><string>Export to a Word report...</string></property>
   </action>
   <action name="actionExit">
    <property name="icon"><iconset resource="../resources/resources.qrc"><normaloff>:/icons/exit.svg</normaloff>:/icons/exit.svg</iconset></property>

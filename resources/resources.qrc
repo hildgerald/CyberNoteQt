@@ -22,6 +22,10 @@
     <file>icons/copy_image.svg</file>
     <file>icons/deselect.svg</file>
     <file>icons/folder_plain.svg</file>
+    <file>icons/folder_http.svg</file>
+    <file>icons/file_plain.svg</file>
+    <file>icons/status_connected.svg</file>
+    <file>icons/status_disconnected.svg</file>
     <file>icons/image_file.svg</file>
     <file>icons/markdown_file.svg</file>
   </qresource>

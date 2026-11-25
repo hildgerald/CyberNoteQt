@@ -3,6 +3,9 @@
 #include <QWidget>
 #include <QFont>
 #include <QPoint>
+#include <QImage>
+#include <QByteArray>
+#include <QList>
 #include "terminalscreen.h"
 
 class Pty;
@@ -55,12 +58,33 @@ public slots:
     void copySelection();          // ~ MenuCopyClick
     void pasteFromClipboard();     // ~ MenuPasteClick
     void copySelectionAsImage();   // Ctrl+Shift+S ~ (nouveau) MenuCopyImageClick sur la sélection
+    void copySelectionAsImageToNote(); // Ctrl+Alt+S : même image, mais insérée dans la note ouverte (cf. signal ci-dessous)
+    void copySelectionTextToNote();    // Ctrl+Alt+C : texte sélectionné inséré dans la note ouverte (cf. signal ci-dessous)
     void clearSelection();         // ~ MenuDeselectClick
     void sendCommand(const QString &command); // envoie une commande + Entrée au shell (~ Menu_Execute de MainWindow)
+
+    // ~ nouveau (v2.6.0) : comme sendCommand(), mais la SORTIE de la commande est capturée et
+    // renvoyée par le signal commandCaptured(jobId, ...) quand elle se termine (ou est
+    // interrompue par Ctrl+C). La commande est exécutée dans le shell du terminal (cd, variables...
+    // persistent) et la sortie reste affichée normalement. Technique : la ligne envoyée est
+    //   printf '<OSC début>'; COMMANDE; printf '<OSC fin + code retour>' $?
+    // (séquences OSC 777 invisibles, ignorées par l'écran) ; les octets reçus entre les deux
+    // marqueurs sont rejoués dans un écran temporaire pour obtenir le texte final.
+    // Renvoie false (rien n'est capturé, la commande est quand même envoyée telle quelle) si la
+    // ligne ne peut pas être suivie (se termine par \\, |, &&, ||).
+    bool sendCommandCapture(const QString &command, int jobId);
 
 signals:
     void titleChanged(const QString &title);
     void shellFinished();
+    // Fin d'une commande lancée par sendCommandCapture : code retour (130 = interrompue par
+    // Ctrl+C) et sortie en texte brut (sans la ligne de commande ni le prompt).
+    void commandCaptured(int jobId, int exitCode, const QString &output);
+    // Émis par Ctrl+Alt+S : image de la sélection à insérer dans la note ouverte
+    // (MainWindow s'en charge, à la ligne suivant le curseur de la note).
+    void selectionImageForNote(const QImage &image);
+    // Émis par Ctrl+Alt+C : texte sélectionné à insérer dans la note ouverte.
+    void selectionTextForNote(const QString &text);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -96,6 +120,8 @@ private:
 
     bool m_cursorBlinkOn = true;
 
+    QImage renderSelectionImage() const; // image de la sélection (largeur = texte le plus long + marge), null si rien à rendre
+
     void recomputeCellMetrics();
     void applySizeToScreenAndPty();
     void syncScrollBar(); // met à jour l'ascenseur (plage/valeur/activation) depuis l'état courant
@@ -105,6 +131,16 @@ private:
     QPoint posToCell(const QPoint &pos) const;  // pixel -> (col, ligne globale)
 
     void sendToShell(const QByteArray &bytes);
+
+    struct Capture {
+        int id = 0;
+        bool started = false; // marqueur de début vu
+        QByteArray buf;       // octets reçus (après le marqueur de début une fois started)
+    };
+    QList<Capture> m_captures;
+    void feedCaptures(const QByteArray &data);
+    void finishAllCaptures(int exitCode); // Ctrl+C : rend la sortie partielle
+    QString renderCapturedOutput(const QByteArray &raw) const;
     void scrollViewport(int deltaLines);
     void resetScrollToBottom();
 };

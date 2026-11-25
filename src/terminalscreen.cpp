@@ -146,6 +146,11 @@ void TerminalScreen::processChar(QChar c)
 void TerminalScreen::putChar(QChar c)
 {
     if (m_pendingWrap) {
+        // Retour à la ligne automatique : mémorise-le sur la dernière cellule de la ligne
+        // qui se termine ici (avant newLine(), qui peut faire défiler l'écran).
+        QVector<TermLine> &wrapScr = activeScreen();
+        if (m_cursorRow >= 0 && m_cursorRow < wrapScr.size() && !wrapScr[m_cursorRow].isEmpty())
+            wrapScr[m_cursorRow].last().wrapped = true;
         newLine();
         m_cursorCol = 0;
         m_pendingWrap = false;
@@ -267,12 +272,15 @@ void TerminalScreen::deleteChars(int n)
     if (m_cursorRow < 0 || m_cursorRow >= scr.size())
         return;
     TermLine &line = scr[m_cursorRow];
+    const bool wasWrapped = !line.isEmpty() && line.last().wrapped; // la ligne reste "continuée" après suppression
     for (int i = 0; i < n; ++i) {
         if (m_cursorCol < line.size())
             line.remove(m_cursorCol);
         TermCell blank; blank.fg = m_currentAttrs.fg; blank.bg = m_currentAttrs.bg;
         line.append(blank);
     }
+    if (!line.isEmpty())
+        line.last().wrapped = wasWrapped;
 }
 
 void TerminalScreen::insertChars(int n)
@@ -281,6 +289,7 @@ void TerminalScreen::insertChars(int n)
     if (m_cursorRow < 0 || m_cursorRow >= scr.size())
         return;
     TermLine &line = scr[m_cursorRow];
+    const bool wasWrapped = !line.isEmpty() && line.last().wrapped; // la ligne reste "continuée" après insertion
     for (int i = 0; i < n; ++i) {
         TermCell blank; blank.fg = m_currentAttrs.fg; blank.bg = m_currentAttrs.bg;
         if (m_cursorCol < line.size())
@@ -288,6 +297,8 @@ void TerminalScreen::insertChars(int n)
         if (line.size() > m_cols)
             line.resize(m_cols);
     }
+    if (!line.isEmpty())
+        line.last().wrapped = wasWrapped;
 }
 
 void TerminalScreen::insertLines(int n)

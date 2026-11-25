@@ -21,6 +21,8 @@ NetcatTermDialog::NetcatTermDialog(QWidget *parent)
     popupMenu->addAction(ui->actionCopy);
     popupMenu->addAction(ui->actionPaste);
     popupMenu->addAction(ui->actionCopyImage);
+    popupMenu->addAction(ui->actionCopyImageToNote);
+    popupMenu->addAction(ui->actionCopyTextToNote);
     popupMenu->addSeparator();
     popupMenu->addAction(ui->actionDeselect);
     popupMenu->addSeparator();
@@ -33,6 +35,10 @@ NetcatTermDialog::NetcatTermDialog(QWidget *parent)
     connect(ui->actionCopy,           &QAction::triggered, ui->terminal, &TerminalWidget::copySelection);
     connect(ui->actionPaste,          &QAction::triggered, ui->terminal, &TerminalWidget::pasteFromClipboard);
     connect(ui->actionCopyImage,      &QAction::triggered, ui->terminal, &TerminalWidget::copySelectionAsImage);
+    connect(ui->actionCopyImageToNote, &QAction::triggered, ui->terminal, &TerminalWidget::copySelectionAsImageToNote);
+    connect(ui->terminal, &TerminalWidget::selectionImageForNote, this, &NetcatTermDialog::imageForNoteReady);
+    connect(ui->actionCopyTextToNote, &QAction::triggered, ui->terminal, &TerminalWidget::copySelectionTextToNote);
+    connect(ui->terminal, &TerminalWidget::selectionTextForNote, this, &NetcatTermDialog::textForNoteReady);
     connect(ui->actionDeselect,       &QAction::triggered, ui->terminal, &TerminalWidget::clearSelection);
     connect(ui->actionRenameTerminal, &QAction::triggered, this, &NetcatTermDialog::onRenameRequested);
 
@@ -103,6 +109,8 @@ void NetcatTermDialog::onEditorContextMenuRequested(const QPoint &pos)
 {
     ui->actionCopy->setEnabled(ui->terminal->hasSelection());
     ui->actionCopyImage->setEnabled(ui->terminal->hasSelection());
+    ui->actionCopyImageToNote->setEnabled(ui->terminal->hasSelection());
+    ui->actionCopyTextToNote->setEnabled(ui->terminal->hasSelection());
     popupMenu->exec(ui->terminal->mapToGlobal(pos));
 }
 

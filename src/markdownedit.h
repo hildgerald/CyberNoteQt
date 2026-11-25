@@ -4,6 +4,7 @@
 #include <QTextEdit>
 #include <QString>
 #include <QList>
+#include <QTextCursor>
 #include <Qt>
 
 class QAction;
@@ -76,7 +77,52 @@ public:
 
     bool isNoteModified() const { return noteModified; } // ~ NoteModified
 
-    QString getCurrentLineTextContent() const; // ~ GetCurrentLineTextContent (ligne où se trouve le curseur)
+    // ~ nouveau (v1.4.0) : insère une image (ex. capture d'une sélection de terminal) sur une
+    // NOUVELLE ligne située juste après la ligne du curseur (après le tableau si le curseur est
+    // dans un tableau). L'image est enregistrée en PNG dans le dossier de la note (nom
+    // horodaté, rendu unique si besoin) et insérée comme pour un collage Ctrl+V. Le curseur
+    // reste à la fin de l'image, donc des insertions successives s'empilent les unes sous les
+    // autres. Renvoie false si l'image est nulle ou ne peut pas être enregistrée.
+    bool insertImageOnNextLine(const QImage &image);
+
+    // ~ nouveau (v1.5.0) : insère un texte (ex. sélection d'un terminal) sur de NOUVELLES lignes
+    // situées juste après la ligne du curseur (après le tableau si le curseur est dans un
+    // tableau), ENCADRÉ par deux lignes ``` pour qu'il soit pris comme un extrait de code.
+    // Une ligne du texte = une ligne de la note, sans interprétation Markdown ; les lignes
+    // vides en début/fin de texte sont retirées. Le curseur reste sur la ``` de fermeture :
+    // des insertions successives s'empilent. Renvoie false si le texte est vide ou blanc.
+    bool insertTextOnNextLine(const QString &text);
+
+    // ~ nouveau (v1.7.0) : texte Markdown de la SÉLECTION courante (ex. dans l'aperçu de la
+    // bibliothèque). Les lignes sont reprises telles quelles (les tableaux touchés par la
+    // sélection sont resérialisés en GFM, les balises d'image ![[x.png]] sont conservées). Pour que
+    // les images suivent le texte dans une autre note, voir copyReferencedImages(). Vide s'il n'y a
+    // pas de sélection.
+    QString selectedMarkdownText() const;
+
+    // Dossier de référence des images de cet éditeur (dossier de la note chargée ; à défaut,
+    // dossier courant), c'est-à-dire là où les balises ![[x.png]] relatives sont résolues.
+    QString imageBaseFolder() const;
+    // Met à jour ce dossier sans recharger la note (ex. note ou dossier renommé pendant qu'elle est ouverte).
+    void setImageBaseFolder(const QString &folder) { basePath = folder; }
+
+    // ~ nouveau (v1.7.0) : pour chaque balise ![[x.png]] de `markdown` (relative à sourceFolder,
+    // absolue ou ~/), COPIE l'image dans destFolder (le dossier de la note de destination) pour que
+    // la note reste autonome quand on copie son dossier. La balise garde son nom relatif
+    // (sous-dossier conservé s'il y en avait un) ; si un fichier de même nom mais de contenu
+    // différent existe déjà, l'image est copiée sous un autre nom (x_1.png...) et la balise
+    // est ajustée ; un fichier identique déjà présent est réutilisé. Une balise dont l'image est
+    // introuvable est laissée telle quelle. Renvoie le Markdown avec les balises éventuellement ajustées.
+    static QString copyReferencedImages(const QString &markdown, const QString &sourceFolder,
+                                        const QString &destFolder);
+
+    // ~ nouveau (v1.7.0) : insère du texte Markdown (titres, tableaux, images, code...) sur de
+    // NOUVELLES lignes situées juste après la ligne du curseur (après le tableau si le curseur
+    // est dans un tableau), avec le même traitement qu'un chargement de fichier (vrais
+    // tableaux, images). Renvoie false si le texte est vide ou blanc.
+    bool insertMarkdownOnNextLine(const QString &markdown);
+
+    QString getCurrentLineTextContent() const; // ~ GetCurrentLineTextContent (vraie ligne/paragraphe où se trouve le curseur, même si l'affichage la replie sur plusieurs lignes)
 
     // ~ nouveau : explorateur de titres (onglet "Outline").
     // headings() parcourt le document courant et renvoie les titres dans l'ordre ; les
@@ -94,10 +140,46 @@ public:
     // menu contextuel (qui gère déjà le cas tableau) via Qt::CustomContextMenu.
     void setExtraContextMenuActions(const QList<QAction *> &actions);
 
+    // ~ nouveau (v2.6.0) : résultat d'une commande exécutée depuis la note (menu Exécuter).
+    //  - markCommandLine()       : repère (QTextCursor, qui suit les modifications du document) la
+    //                              ligne courante, à garder pendant l'exécution.
+    //  - commandOccurrence()     : rang de cette ligne parmi les lignes identiques du document
+    //                              (0 = la première), pour la retrouver dans le FICHIER si la note
+    //                              n'est plus affichée à la fin de la commande.
+    //  - loadSerial()            : change à chaque loadFromMdFile() ; si elle a changé, le repère
+    //                              n'est plus valable (autre fiche chargée entre-temps).
+    //  - insertCommandOutputAfter: insère `output` sur de nouvelles lignes juste après la ligne
+    //                              repérée (entouré de ``` sauf si la commande est déjà dans une
+    //                              zone ```, auquel cas les lignes sont ajoutées telles quelles).
+    //                              Le curseur et le défilement de l'utilisateur ne bougent pas.
+    //  - insertCommandOutputInFile: même insertion directement dans un fichier .md sur disque.
+    QTextCursor markCommandLine() const;
+    int commandOccurrence() const;
+    quint64 loadSerial() const { return m_loadSerial; }
+    bool insertCommandOutputAfter(const QTextCursor &mark, const QString &command, const QString &output);
+    static bool insertCommandOutputInFile(const QString &fileName, const QString &command,
+                                          int occurrence, const QString &output);
+
+    // ~ nouveau (v2.5.0) : active Ctrl+Alt+C (sélection -> copyToNoteRequested). Auparavant
+    // réservé aux éditeurs en lecture seule ; l'aperçu de la bibliothèque étant désormais
+    // éditable, le raccourci est activé explicitement par MainWindow (désactivé par défaut).
+    void setCopyToNoteShortcutEnabled(bool on) { m_copyToNoteShortcut = on; }
+
+signals:
+    // ~ nouveau (v2.5.0) : l'éditeur perd le focus (hors ouverture d'un menu contextuel).
+    // Utilisé pour enregistrer automatiquement une fiche de la bibliothèque modifiée.
+    void focusLeft();
+
+    // Émis quand on appuie sur Ctrl+Alt+C dans un éditeur en LECTURE SEULE (l'aperçu de la
+    // bibliothèque) avec une sélection : MainWindow l'insère dans la note en cours d'édition.
+    void copyToNoteRequested(const QString &markdown);
+
 protected:
     void insertFromMimeData(const QMimeData *source) override; // ~ PasteFromClipboard/PasteImageFromClipboard
     void keyPressEvent(QKeyEvent *event) override;              // Tab/Maj+Tab dans les tableaux (~ Obsidian)
-    void contextMenuEvent(QContextMenuEvent *event) override;    // menu "Table" quand le curseur est dans un tableau
+    void contextMenuEvent(QContextMenuEvent *event) override;    // menu "Table", "Format", bloc de code...
+    void paintEvent(QPaintEvent *event) override;                // nom du langage ```bash dessiné à droite (balises masquées)
+    void focusOutEvent(QFocusEvent *event) override;             // signal focusLeft()
 
 private slots:
     void onCursorPositionChanged();
@@ -112,6 +194,21 @@ private:
     bool m_updatingBlockBackgrounds = false; // garde de ré-entrance pour updateBlockDecorations
 
     QList<QAction *> m_extraContextMenuActions; // ex. "Exécuter" (cf. setExtraContextMenuActions)
+    quint64 m_loadSerial = 0;                   // cf. loadSerial()
+    bool m_copyToNoteShortcut = false;          // cf. setCopyToNoteShortcutEnabled
+
+    // --- Insertions depuis le menu contextuel (v2.5.0) ---
+    bool askTableSize(int *rows, int *cols);     // petite boîte de dialogue (colonnes / lignes)
+    void insertEmptyTable(int bodyRows, int cols); // nouveau tableau sur une nouvelle ligne après le curseur
+    void insertCodeBlockOnNextLine();             // zone ``` vide sur une nouvelle ligne, curseur à l'intérieur
+
+    // --- Formats de texte sur une sélection (menu "Format") : tous en Markdown ---
+    // Les positions sont absolues dans le QTextDocument.
+    void applyInlineFormat(const QString &marker, int selStart, int selEnd); // bascule **, *, __, ~~, ==, `, $
+    enum BlockFormatKind { BlockParagraph = 0, BlockH1 = 1, BlockH2, BlockH3, BlockH4, BlockH5,
+                           BlockQuote = 10, BlockBullet, BlockNumbered, BlockTask };
+    void applyBlockFormat(BlockFormatKind kind, int selStart, int selEnd);   // titre, citation, listes
+    void clearTextFormatting(int selStart, int selEnd);                      // retire marqueurs + préfixe de bloc
 
     // ~ nouveau : conversion "live" d'un tableau GFM tapé à la main (pas chargé depuis
     // un fichier) en vrai QTextTable, dès que la ligne séparatrice |---|---| devient
@@ -123,6 +220,7 @@ private:
 
     QString resolveImagePath(const QString &path) const; // ~ ResolveImagePath
     QString generateImageFileName() const;                // ~ GenerateImageFileName
+    void openNewLineAfterCursor(QTextCursor &cursor);     // crée une ligne vide neutre après la ligne (ou le tableau) du curseur, y place `cursor`
 
     void insertMarkdownContent(QTextCursor &cursor, const QStringList &lines); // point d'entrée : détecte les tableaux et délègue le reste
     void insertMarkdownText(QTextCursor &cursor, const QString &text); // insère texte+séparateur+image pour chaque ![[..]] (une seule ligne, hors tableau)

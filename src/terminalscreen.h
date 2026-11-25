@@ -20,6 +20,11 @@ struct TermCell {
     bool underline = false;
     bool strike = false;
     bool inverse = false;
+    // true UNIQUEMENT sur la dernière cellule d'une ligne dont la suite est le résultat d'un
+    // retour à la ligne AUTOMATIQUE (texte plus long que la largeur du terminal), et non d'un
+    // vrai saut de ligne (LF). Permet à la copie de texte de re-joindre les morceaux en une
+    // seule ligne logique (cf. TerminalWidget::selectedText).
+    bool wrapped = false;
     bool wide = false; // true pour la 1ère colonne d'un caractère "large" (CJK) -- simplifié, non exploité pour l'instant
 };
 

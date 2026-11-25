@@ -2,6 +2,7 @@
 
 #include <QWidget>
 #include <QMenu>
+#include <QImage>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class LinuxTermDialog; }
@@ -35,12 +36,24 @@ public:
     ~LinuxTermDialog() override;
 
     void sendCommand(const QString &command); // relaie vers TerminalWidget::sendCommand
+    // v2.6.0 : relaie vers TerminalWidget::sendCommandCapture (sortie renvoyée par commandFinished)
+    bool sendCommandCapture(const QString &command, int jobId);
 
     // Fixe le titre de la fenêtre de façon durable : le shell (bash) envoie sa
     // propre séquence de titre (OSC) dès qu'il démarre, ce qui écraserait sinon
     // silencieusement le nom choisi ici (bug corrigé : le titre saisi dans
     // MainWindow::onNewLinuxTerm n'apparaissait jamais pour cette raison).
     void setFixedTitle(const QString &title);
+
+signals:
+    // v2.6.0 : fin d'une commande lancée par sendCommandCapture (relais de TerminalWidget::commandCaptured)
+    void commandFinished(int jobId, int exitCode, const QString &output);
+    // Ctrl+Alt+S dans le terminal : image de la sélection à insérer dans la note ouverte
+    // (relais de TerminalWidget::selectionImageForNote, câblé par MainWindow).
+    void imageForNoteReady(const QImage &image);
+    // Ctrl+Alt+C dans le terminal : texte sélectionné à insérer dans la note ouverte
+    // (relais de TerminalWidget::selectionTextForNote, câblé par MainWindow).
+    void textForNoteReady(const QString &text);
 
 private slots:
     void onEditorContextMenuRequested(const QPoint &pos);

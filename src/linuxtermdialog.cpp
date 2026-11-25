@@ -26,6 +26,8 @@ LinuxTermDialog::LinuxTermDialog(QWidget *parent, const QString &workingDir)
     popupMenu->addAction(ui->actionCopy);
     popupMenu->addAction(ui->actionPaste);
     popupMenu->addAction(ui->actionCopyImage);
+    popupMenu->addAction(ui->actionCopyImageToNote);
+    popupMenu->addAction(ui->actionCopyTextToNote);
     popupMenu->addSeparator();
     popupMenu->addAction(ui->actionDeselect);
     popupMenu->addSeparator();
@@ -38,6 +40,10 @@ LinuxTermDialog::LinuxTermDialog(QWidget *parent, const QString &workingDir)
     connect(ui->actionCopy,          &QAction::triggered, ui->terminal, &TerminalWidget::copySelection);
     connect(ui->actionPaste,         &QAction::triggered, ui->terminal, &TerminalWidget::pasteFromClipboard);
     connect(ui->actionCopyImage,     &QAction::triggered, ui->terminal, &TerminalWidget::copySelectionAsImage);
+    connect(ui->actionCopyImageToNote, &QAction::triggered, ui->terminal, &TerminalWidget::copySelectionAsImageToNote);
+    connect(ui->terminal, &TerminalWidget::selectionImageForNote, this, &LinuxTermDialog::imageForNoteReady);
+    connect(ui->actionCopyTextToNote, &QAction::triggered, ui->terminal, &TerminalWidget::copySelectionTextToNote);
+    connect(ui->terminal, &TerminalWidget::selectionTextForNote, this, &LinuxTermDialog::textForNoteReady);
     connect(ui->actionDeselect,      &QAction::triggered, ui->terminal, &TerminalWidget::clearSelection);
     connect(ui->actionRenameTerminal,&QAction::triggered, this, &LinuxTermDialog::onRenameRequested);
 
@@ -46,6 +52,7 @@ LinuxTermDialog::LinuxTermDialog(QWidget *parent, const QString &workingDir)
             setWindowTitle(title);
     });
     connect(ui->terminal, &TerminalWidget::shellFinished, this, &LinuxTermDialog::onShellFinished);
+    connect(ui->terminal, &TerminalWidget::commandCaptured, this, &LinuxTermDialog::commandFinished);
 
     ui->terminal->startShell(workingDir); // ~ TFLinuxTerm.FormCreate -> CreateShell, mais sur un vrai pty
     ui->terminal->setFocus();
@@ -60,6 +67,8 @@ void LinuxTermDialog::onEditorContextMenuRequested(const QPoint &pos)
 {
     ui->actionCopy->setEnabled(ui->terminal->hasSelection());
     ui->actionCopyImage->setEnabled(ui->terminal->hasSelection());
+    ui->actionCopyImageToNote->setEnabled(ui->terminal->hasSelection());
+    ui->actionCopyTextToNote->setEnabled(ui->terminal->hasSelection());
     popupMenu->exec(ui->terminal->mapToGlobal(pos));
 }
 
@@ -87,6 +96,15 @@ void LinuxTermDialog::sendCommand(const QString &command)
     ui->terminal->setFocus();
     raise();
     activateWindow();
+}
+
+bool LinuxTermDialog::sendCommandCapture(const QString &command, int jobId)
+{
+    const bool captured = ui->terminal->sendCommandCapture(command, jobId);
+    ui->terminal->setFocus();
+    raise();
+    activateWindow();
+    return captured;
 }
 
 void LinuxTermDialog::setFixedTitle(const QString &title)

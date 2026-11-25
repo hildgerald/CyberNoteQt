@@ -8,6 +8,7 @@
 #include <QDateTime>
 #include <QMimeData>
 #include <QImage>
+#include <algorithm>
 #include <QTextBlock>
 #include <QTextTable>
 #include <QTextTableFormat>
@@ -16,7 +17,16 @@
 #include <QUrl>
 #include <QMenu>
 #include <QContextMenuEvent>
+#include <QFocusEvent>
+#include <QPainter>
+#include <QAbstractTextDocumentLayout>
+#include <climits>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QSpinBox>
 #include <QKeyEvent>
+#include <QSet>
 #include <QScrollBar>
 #include <QAbstractTextDocumentLayout>
 
@@ -394,9 +404,15 @@ bool MarkdownEdit::revealHeading(int index)
 
 QString MarkdownEdit::getCurrentLineTextContent() const
 {
-    QTextCursor c = textCursor();
-    c.select(QTextCursor::LineUnderCursor);
-    return c.selectedText();
+    // ~ GetCurrentLineTextContent : texte de la VRAIE ligne (paragraphe/bloc) où se trouve le
+    // curseur. Ne pas utiliser QTextCursor::LineUnderCursor : il désigne la ligne VISUELLE, c'est-à-
+    // dire seulement le morceau affiché sur une ligne lorsque l'éditeur replie un texte plus long
+    // que sa largeur (v1.8.0 : une commande longue n'était envoyée qu'en partie au terminal).
+    QString t = textCursor().block().text();
+    t.replace(kSeparatorPlusImage, QString()); // image intégrée : seule sa balise ![[..]] reste dans le texte
+    t.remove(QChar(QChar::ObjectReplacementCharacter));
+    t.remove(QChar(QChar::LineSeparator));
+    return t;
 }
 
 QString MarkdownEdit::resolveImagePath(const QString &path) const
@@ -742,6 +758,7 @@ void MarkdownEdit::loadFromMdFile(const QString &fileName)
 {
     // ~ TMarkdownEdit.LoadFromMdFile
     basePath = QFileInfo(fileName).absolutePath();
+    ++m_loadSerial; // les repères posés avant ce chargement ne sont plus valables (cf. markCommandLine)
 
     QFile f(fileName);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
@@ -820,6 +837,211 @@ void MarkdownEdit::appendMarkdownText(const QString &content)
     noteModified = true;
 }
 
+void MarkdownEdit::openNewLineAfterCursor(QTextCursor &cursor)
+{
+    // À appeler dans un beginEditBlock() : crée une ligne vide neutre (sans fond de
+    // code/citation hérité) juste après la ligne du curseur, ou après le tableau si le
+    // curseur est dans un tableau, et y place `cursor`.
+    if (QTextTable *table = cursor.currentTable()) {
+        cursor.setPosition(std::min(table->lastPosition() + 1, document()->characterCount() - 1));
+        cursor.insertBlock(QTextBlockFormat(), QTextCharFormat());
+        cursor.movePosition(QTextCursor::PreviousBlock);
+    } else {
+        cursor.movePosition(QTextCursor::EndOfBlock);
+        cursor.insertBlock(QTextBlockFormat(), QTextCharFormat());
+    }
+}
+
+bool MarkdownEdit::insertTextOnNextLine(const QString &text)
+{
+    // Le texte est inséré dans un bloc de code Markdown : une ligne ```, le texte (une ligne
+    // du texte par ligne de la note, sans interprétation Markdown), puis une ligne ```.
+    // Les lignes vides en début/fin de sélection (fréquentes dans un terminal) sont retirées.
+    QStringList lines = QString(text).replace("\r\n", "\n").replace('\r', '\n').split('\n');
+    while (!lines.isEmpty() && lines.first().trimmed().isEmpty())
+        lines.removeFirst();
+    while (!lines.isEmpty() && lines.last().trimmed().isEmpty())
+        lines.removeLast();
+    if (lines.isEmpty())
+        return false;
+
+    lines.prepend(QStringLiteral("```"));
+    lines.append(QStringLiteral("```"));
+
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
+    openNewLineAfterCursor(cursor);
+    for (int i = 0; i < lines.size(); ++i) {
+        if (i > 0)
+            cursor.insertBlock(QTextBlockFormat(), QTextCharFormat());
+        cursor.insertText(lines.at(i));
+    }
+    cursor.endEditBlock();
+
+    setTextCursor(cursor);
+    ensureCursorVisible();
+    noteModified = true;
+    return true;
+}
+
+QString MarkdownEdit::selectedMarkdownText() const
+{
+    const QTextCursor sel = textCursor();
+    if (!sel.hasSelection())
+        return QString();
+
+    const int selStart = sel.selectionStart();
+    const int selEnd = sel.selectionEnd();
+
+    QStringList lines;
+    QSet<QTextTable *> doneTables;
+    for (QTextBlock block = document()->findBlock(selStart);
+         block.isValid() && block.position() < selEnd; block = block.next()) {
+        if (QTextTable *table = QTextCursor(block).currentTable()) {
+            // Un tableau touché par la sélection est repris en entier (une seule fois).
+            if (!doneTables.contains(table)) {
+                doneTables.insert(table);
+                lines << serializeTable(table);
+            }
+            continue;
+        }
+
+        const int blockStart = block.position();
+        const int from = std::max(selStart, blockStart) - blockStart;
+        const int to = std::min(selEnd, blockStart + block.length() - 1) - blockStart;
+        QString t = block.text().mid(from, std::max(0, to - from));
+        t.replace(kSeparatorPlusImage, QString()); // l'image elle-même : seule sa balise ![[..]] est reprise
+        t.remove(QChar(QChar::ObjectReplacementCharacter));
+        t.remove(QChar(QChar::LineSeparator));
+        lines << t;
+    }
+
+    return lines.join('\n');
+}
+
+QString MarkdownEdit::imageBaseFolder() const
+{
+    return basePath.isEmpty() ? QDir::currentPath() : basePath;
+}
+
+QString MarkdownEdit::copyReferencedImages(const QString &markdown, const QString &sourceFolder,
+                                           const QString &destFolder)
+{
+    static const QRegularExpression imgTag(QStringLiteral("!\\[\\[([^\\]]+)\\]\\]"));
+
+    auto sameContent = [](const QString &a, const QString &b) {
+        if (QFileInfo(a).size() != QFileInfo(b).size())
+            return false;
+        QFile fa(a), fb(b);
+        return fa.open(QIODevice::ReadOnly) && fb.open(QIODevice::ReadOnly) && fa.readAll() == fb.readAll();
+    };
+
+    // Copie `src` dans destFolder sous le nom relatif `rel` (ou une variante _1, _2... en cas de
+    // fichier différent déjà présent) ; renvoie le nom relatif retenu, vide en cas d'échec.
+    auto importOne = [&](const QString &src, const QString &rel) -> QString {
+        const QFileInfo ri(rel);
+        const QString dir = (ri.path() == QLatin1String(".")) ? QString() : ri.path() + QLatin1Char('/');
+        const QString stem = ri.completeBaseName();
+        const QString suffix = ri.suffix().isEmpty() ? QString() : QLatin1Char('.') + ri.suffix();
+        const QString srcCanon = QFileInfo(src).canonicalFilePath();
+
+        for (int n = 0; n < 1000; ++n) {
+            const QString candidate = dir + stem + (n ? QStringLiteral("_%1").arg(n) : QString()) + suffix;
+            const QString dest = QDir(destFolder).filePath(candidate);
+            if (!QFileInfo::exists(dest)) {
+                QDir().mkpath(QFileInfo(dest).absolutePath());
+                return QFile::copy(src, dest) ? candidate : QString();
+            }
+            if (QFileInfo(dest).canonicalFilePath() == srcCanon || sameContent(src, dest))
+                return candidate; // déjà là (même fichier ou contenu identique)
+        }
+        return QString();
+    };
+
+    QString result;
+    int last = 0;
+    QRegularExpressionMatchIterator it = imgTag.globalMatch(markdown);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        result += markdown.mid(last, m.capturedStart() - last);
+        last = m.capturedEnd();
+
+        const QString tagPath = m.captured(1);
+        const bool isHome = tagPath.startsWith(QStringLiteral("~/"));
+        const bool isAbs = QDir::isAbsolutePath(tagPath);
+        const QString src = isHome ? QDir::homePath() + QLatin1Char('/') + tagPath.mid(2)
+                                   : (isAbs ? tagPath : QDir(sourceFolder).filePath(tagPath));
+        if (!QFileInfo(src).isFile()) {
+            result += m.captured(0); // image introuvable : balise inchangée
+            continue;
+        }
+
+        // Chemin relatif dans la note de destination : on garde le sous-dossier d'une balise
+        // relative, sinon (absolue, ~/, ou remontant par ..) on ne garde que le nom du fichier.
+        QString rel = QDir::cleanPath(tagPath);
+        if (isHome || isAbs || rel.startsWith(QStringLiteral("..")))
+            rel = QFileInfo(src).fileName();
+
+        const QString newRel = importOne(src, rel);
+        result += newRel.isEmpty() ? m.captured(0) : QStringLiteral("![[%1]]").arg(newRel);
+    }
+    result += markdown.mid(last);
+    return result;
+}
+
+bool MarkdownEdit::insertMarkdownOnNextLine(const QString &markdown)
+{
+    QStringList lines = QString(markdown).replace("\r\n", "\n").replace('\r', '\n').split('\n');
+    while (!lines.isEmpty() && lines.first().trimmed().isEmpty())
+        lines.removeFirst();
+    while (!lines.isEmpty() && lines.last().trimmed().isEmpty())
+        lines.removeLast();
+    if (lines.isEmpty())
+        return false;
+
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
+    openNewLineAfterCursor(cursor);
+    insertMarkdownContent(cursor, lines);
+    cursor.endEditBlock();
+
+    setTextCursor(cursor);
+    ensureCursorVisible();
+    noteModified = true;
+    return true;
+}
+
+bool MarkdownEdit::insertImageOnNextLine(const QImage &image)
+{
+    if (image.isNull())
+        return false;
+
+    // Enregistre l'image dans le dossier de la note (comme le collage Ctrl+V), sans écraser
+    // un fichier existant (deux captures dans la même seconde ont le même nom horodaté).
+    QString folder = basePath.isEmpty() ? QDir::currentPath() : basePath;
+    if (!QDir(folder).exists())
+        QDir().mkpath(folder);
+    QString fname = generateImageFileName();
+    const QString stem = QFileInfo(fname).completeBaseName();
+    for (int n = 1; QFile::exists(QDir(folder).filePath(fname)); ++n)
+        fname = QStringLiteral("%1_%2.png").arg(stem).arg(n);
+    if (!image.save(QDir(folder).filePath(fname), "PNG"))
+        return false;
+
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
+
+    openNewLineAfterCursor(cursor);
+
+    insertImageTagAndPicture(cursor, fname, image);
+    cursor.endEditBlock();
+
+    setTextCursor(cursor);
+    ensureCursorVisible();
+    noteModified = true;
+    return true;
+}
+
 void MarkdownEdit::insertFromMimeData(const QMimeData *source)
 {
     // ~ TMarkdownEdit.PasteFromClipboard / PasteImageFromClipboard : si le presse-papier
@@ -855,6 +1077,17 @@ void MarkdownEdit::insertFromMimeData(const QMimeData *source)
 
 void MarkdownEdit::keyPressEvent(QKeyEvent *event)
 {
+    // Ctrl+Alt+C dans l'aperçu (lecture seule) de la bibliothèque : demande l'insertion de la
+    // sélection dans la note en cours d'édition (traitée par MainWindow). Sans effet dans l'éditeur.
+    if ((isReadOnly() || m_copyToNoteShortcut) && (event->modifiers() & Qt::ControlModifier) && (event->modifiers() & Qt::AltModifier)
+        && !(event->modifiers() & Qt::ShiftModifier) && event->key() == Qt::Key_C) {
+        const QString markdown = selectedMarkdownText();
+        if (!markdown.trimmed().isEmpty())
+            emit copyToNoteRequested(markdown);
+        event->accept();
+        return;
+    }
+
     // ~ Tab/Maj+Tab navigue de cellule en cellule dans un tableau, comme Obsidian.
     // Tab dans la toute dernière cellule ajoute une nouvelle ligne (aussi comme Obsidian).
     if (event->key() == Qt::Key_Tab || event->key() == Qt::Key_Backtab) {
@@ -895,42 +1128,199 @@ void MarkdownEdit::setExtraContextMenuActions(const QList<QAction *> &actions)
     m_extraContextMenuActions = actions;
 }
 
+void MarkdownEdit::focusOutEvent(QFocusEvent *event)
+{
+    QTextEdit::focusOutEvent(event);
+    // L'ouverture d'un menu contextuel prend le focus (PopupFocusReason) : ce n'est pas "quitter".
+    if (event->reason() != Qt::PopupFocusReason)
+        emit focusLeft();
+}
+
+namespace {
+// ---- aides pour les formats de texte appliqués à une sélection ----
+
+struct TextSegment
+{
+    QTextBlock block;
+    int s = 0; // début dans le bloc
+    int e = 0; // fin (exclue) dans le bloc
+};
+
+// Découpe la sélection [selStart, selEnd) en un segment par bloc touché (les blocs des cellules
+// de tableau sont des blocs comme les autres pour QTextDocument).
+QList<TextSegment> selectionSegments(QTextDocument *doc, int selStart, int selEnd)
+{
+    QList<TextSegment> out;
+    for (QTextBlock b = doc->findBlock(selStart); b.isValid() && b.position() < selEnd; b = b.next()) {
+        const int bs = b.position();
+        const int s = qMax(selStart, bs) - bs;
+        const int e = qMin(selEnd, bs + b.length() - 1) - bs;
+        if (e > s)
+            out.append({b, s, e});
+    }
+    return out;
+}
+
+// Zone de code (lignes ``` comprises) : le Markdown inline n'y a pas de sens.
+bool isCodeLikeBlock(const QTextBlock &b)
+{
+    return MarkdownHighlighter::isCodeBlockState(b.userState())
+        || MarkdownHighlighter::isFenceLineText(b.text().trimmed());
+}
+
+int starRunBefore(const QString &t, int pos)
+{
+    int n = 0;
+    while (pos - 1 - n >= 0 && t.at(pos - 1 - n) == QLatin1Char('*'))
+        ++n;
+    return n;
+}
+
+int starRunAfter(const QString &t, int pos)
+{
+    int n = 0;
+    while (pos + n < t.size() && t.at(pos + n) == QLatin1Char('*'))
+        ++n;
+    return n;
+}
+
+// Préfixe de bloc Markdown : titre "## ", citation "> ", puce "- ", case "- [ ] ", numéro "1. ".
+const QRegularExpression &blockPrefixRe()
+{
+    static const QRegularExpression re(QStringLiteral(
+        R"(^(?:#{1,6}[ \t]+|(?:>[ \t]?)+|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|\d+[.)][ \t]+))"));
+    return re;
+}
+} // namespace
+
 void MarkdownEdit::contextMenuEvent(QContextMenuEvent *event)
 {
-    // ~ menu contextuel standard (Copier/Coller...) + actions supplémentaires fournies
-    // par MainWindow (ex. "Exécuter", cf. setExtraContextMenuActions) + un sous-menu
-    // "Table" (façon Obsidian) quand le clic droit a lieu dans une cellule de tableau.
-    QMenu *menu = createStandardContextMenu();
+    // Clic droit : la sélection est conservée si le clic tombe dedans ; sinon le curseur
+    // est placé au point cliqué (les insertions du menu se font donc "là où on a cliqué").
+    const QTextCursor click = cursorForPosition(event->pos());
+    {
+        const QTextCursor sel = textCursor();
+        const bool clickInSelection = sel.hasSelection()
+            && click.position() >= sel.selectionStart() && click.position() <= sel.selectionEnd();
+        if (!clickInSelection && !isReadOnly())
+            setTextCursor(click);
+    }
 
+    // ~ menu standard (Copier/Coller...) + actions de MainWindow (ex. "Exécuter")
+    QMenu *menu = createStandardContextMenu();
     if (!m_extraContextMenuActions.isEmpty()) {
         menu->addSeparator();
         menu->addActions(m_extraContextMenuActions);
     }
 
-    const QTextCursor cursor = cursorForPosition(event->pos());
-    if (QTextTable *table = cursor.currentTable()) {
+    if (!isReadOnly()) {
+        const QTextCursor cur = textCursor();
+
+        // --- Format : tous les formats Markdown applicables à la sélection ---
+        if (cur.hasSelection()) {
+            const int s = cur.selectionStart();
+            const int e = cur.selectionEnd();
+            menu->addSeparator();
+            QMenu *fmt = menu->addMenu(tr("Format"));
+
+            auto addInline = [this, fmt, s, e](const QString &label, const QString &marker) {
+                fmt->addAction(label, this, [this, marker, s, e]() { applyInlineFormat(marker, s, e); });
+            };
+            addInline(tr("Bold"), QStringLiteral("**"));
+            addInline(tr("Italic"), QStringLiteral("*"));
+            addInline(tr("Underline"), QStringLiteral("__"));
+            addInline(tr("Strikethrough"), QStringLiteral("~~"));
+            addInline(tr("Highlight"), QStringLiteral("=="));
+            addInline(tr("Inline Code"), QStringLiteral("`"));
+            addInline(tr("Math"), QStringLiteral("$"));
+
+            fmt->addSeparator();
+            QMenu *heading = fmt->addMenu(tr("Heading"));
+            for (int lvl = 1; lvl <= 5; ++lvl) {
+                heading->addAction(tr("Heading %1").arg(lvl), this, [this, lvl, s, e]() {
+                    applyBlockFormat(static_cast<BlockFormatKind>(lvl), s, e);
+                });
+            }
+            heading->addSeparator();
+            heading->addAction(tr("Normal Text"), this, [this, s, e]() { applyBlockFormat(BlockParagraph, s, e); });
+
+            auto addBlock = [this, fmt, s, e](const QString &label, BlockFormatKind kind) {
+                fmt->addAction(label, this, [this, kind, s, e]() { applyBlockFormat(kind, s, e); });
+            };
+            addBlock(tr("Quote"), BlockQuote);
+            addBlock(tr("Bulleted List"), BlockBullet);
+            addBlock(tr("Numbered List"), BlockNumbered);
+            addBlock(tr("Task List"), BlockTask);
+
+            fmt->addSeparator();
+            fmt->addAction(tr("Clear Formatting"), this, [this, s, e]() { clearTextFormatting(s, e); });
+        }
+
+        // --- Table : insertion d'un tableau + édition (actif quand le clic est dans un tableau) ---
         menu->addSeparator();
         QMenu *tableMenu = menu->addMenu(tr("Table"));
-
-        tableMenu->addAction(tr("Insert Row Above"), this, [this, table, cursor]() { insertTableRow(table, cursor, false); });
-        tableMenu->addAction(tr("Insert Row Below"), this, [this, table, cursor]() { insertTableRow(table, cursor, true); });
-        tableMenu->addAction(tr("Duplicate Row"), this, [this, table, cursor]() { duplicateTableRow(table, cursor); });
-        tableMenu->addAction(tr("Delete Row"), this, [this, table, cursor]() { deleteTableRow(table, cursor); });
+        tableMenu->addAction(tr("Insert Table..."), this, [this]() {
+            int rows = 2, cols = 3;
+            if (askTableSize(&rows, &cols))
+                insertEmptyTable(rows, cols);
+        });
         tableMenu->addSeparator();
-        tableMenu->addAction(tr("Insert Column Left"), this, [this, table, cursor]() { insertTableColumn(table, cursor, false); });
-        tableMenu->addAction(tr("Insert Column Right"), this, [this, table, cursor]() { insertTableColumn(table, cursor, true); });
-        tableMenu->addAction(tr("Duplicate Column"), this, [this, table, cursor]() { duplicateTableColumn(table, cursor); });
-        tableMenu->addAction(tr("Delete Column"), this, [this, table, cursor]() { deleteTableColumn(table, cursor); });
+
+        QTextTable *table = click.currentTable();
+        const int curRow = table ? table->cellAt(click).row() : -1;
+
+        auto addTableAction = [this, tableMenu, table, click](const QString &label, bool enabled, auto op) {
+            QAction *a = tableMenu->addAction(label, this, [this, table, click, op]() { (this->*op)(table, click); });
+            a->setEnabled(enabled);
+        };
+        QAction *rowAbove = tableMenu->addAction(tr("Insert Row Above"), this, [this, table, click]() { insertTableRow(table, click, false); });
+        rowAbove->setEnabled(table && curRow > 0); // pas au-dessus de la ligne d'en-tête
+        QAction *rowBelow = tableMenu->addAction(tr("Insert Row Below"), this, [this, table, click]() { insertTableRow(table, click, true); });
+        rowBelow->setEnabled(table != nullptr);
+        addTableAction(tr("Duplicate Row"), table != nullptr, &MarkdownEdit::duplicateTableRow);
+        addTableAction(tr("Delete Row"), table && table->rows() > 1, &MarkdownEdit::deleteTableRow);
+        tableMenu->addSeparator();
+        QAction *colLeft = tableMenu->addAction(tr("Insert Column Left"), this, [this, table, click]() { insertTableColumn(table, click, false); });
+        colLeft->setEnabled(table != nullptr);
+        QAction *colRight = tableMenu->addAction(tr("Insert Column Right"), this, [this, table, click]() { insertTableColumn(table, click, true); });
+        colRight->setEnabled(table != nullptr);
+        addTableAction(tr("Duplicate Column"), table != nullptr, &MarkdownEdit::duplicateTableColumn);
+        addTableAction(tr("Delete Column"), table && table->columns() > 1, &MarkdownEdit::deleteTableColumn);
+
+        // --- Zone de code ``` ---
+        QAction *codeAct = menu->addAction(tr("Insert Code Block"), this, [this]() { insertCodeBlockOnNextLine(); });
+        codeAct->setEnabled(!isCodeLikeBlock(textCursor().block()));
     }
 
     menu->exec(event->globalPos());
     delete menu;
 }
 
+// ======================= Édition de tableau =======================
+
 void MarkdownEdit::insertTableRow(QTextTable *table, const QTextCursor &at, bool below)
 {
     const QTextTableCell cell = table->cellAt(at);
-    table->insertRows(cell.row() + (below ? 1 : 0), 1);
+    const int row = cell.row();
+    if (!below && row == 0)
+        return; // la ligne 0 est l'en-tête GFM : on n'insère jamais au-dessus
+    const int col = cell.column();
+    const int newRow = row + (below ? 1 : 0);
+    const int srcRow = below ? row : row + 1; // la ligne d'origine, une fois la nouvelle insérée
+
+    QTextCursor edit(document());
+    edit.beginEditBlock();
+    table->insertRows(newRow, 1);
+    for (int c = 0; c < table->columns(); ++c) {
+        // La nouvelle ligne reprend l'alignement de colonne de la ligne voisine.
+        QTextCursor src = table->cellAt(srcRow, c).firstCursorPosition();
+        QTextCursor dst = table->cellAt(newRow, c).firstCursorPosition();
+        QTextBlockFormat bf = dst.blockFormat();
+        bf.setAlignment(src.blockFormat().alignment());
+        dst.setBlockFormat(bf);
+    }
+    edit.endEditBlock();
+    setTextCursor(table->cellAt(newRow, col).firstCursorPosition());
 }
 
 void MarkdownEdit::deleteTableRow(QTextTable *table, const QTextCursor &at)
@@ -938,7 +1328,10 @@ void MarkdownEdit::deleteTableRow(QTextTable *table, const QTextCursor &at)
     if (table->rows() <= 1)
         return; // garde toujours au moins une ligne
     const QTextTableCell cell = table->cellAt(at);
-    table->removeRows(cell.row(), 1);
+    const int row = cell.row();
+    const int col = cell.column();
+    table->removeRows(row, 1);
+    setTextCursor(table->cellAt(qMin(row, table->rows() - 1), qMin(col, table->columns() - 1)).firstCursorPosition());
 }
 
 void MarkdownEdit::duplicateTableRow(QTextTable *table, const QTextCursor &at)
@@ -960,7 +1353,29 @@ void MarkdownEdit::duplicateTableRow(QTextTable *table, const QTextCursor &at)
 void MarkdownEdit::insertTableColumn(QTextTable *table, const QTextCursor &at, bool right)
 {
     const QTextTableCell cell = table->cellAt(at);
-    table->insertColumns(cell.column() + (right ? 1 : 0), 1);
+    const int col = cell.column();
+    const int row = cell.row();
+    const int newCol = col + (right ? 1 : 0);
+    const int srcCol = right ? col : col + 1; // la colonne d'origine, une fois la nouvelle insérée
+
+    QTextCursor edit(document());
+    edit.beginEditBlock();
+    table->insertColumns(newCol, 1);
+    for (int r = 0; r < table->rows(); ++r) {
+        // La nouvelle colonne reprend l'alignement de sa voisine ; sa cellule d'en-tête est en gras.
+        QTextCursor src = table->cellAt(r, srcCol).firstCursorPosition();
+        QTextCursor dst = table->cellAt(r, newCol).firstCursorPosition();
+        QTextBlockFormat bf = dst.blockFormat();
+        bf.setAlignment(src.blockFormat().alignment());
+        dst.setBlockFormat(bf);
+        if (r == 0) {
+            QTextCharFormat cf;
+            cf.setFontWeight(QFont::Bold);
+            dst.mergeBlockCharFormat(cf);
+        }
+    }
+    edit.endEditBlock();
+    setTextCursor(table->cellAt(row, newCol).firstCursorPosition());
 }
 
 void MarkdownEdit::deleteTableColumn(QTextTable *table, const QTextCursor &at)
@@ -968,7 +1383,10 @@ void MarkdownEdit::deleteTableColumn(QTextTable *table, const QTextCursor &at)
     if (table->columns() <= 1)
         return; // garde toujours au moins une colonne
     const QTextTableCell cell = table->cellAt(at);
-    table->removeColumns(cell.column(), 1);
+    const int row = cell.row();
+    const int col = cell.column();
+    table->removeColumns(col, 1);
+    setTextCursor(table->cellAt(qMin(row, table->rows() - 1), qMin(col, table->columns() - 1)).firstCursorPosition());
 }
 
 void MarkdownEdit::duplicateTableColumn(QTextTable *table, const QTextCursor &at)
@@ -984,5 +1402,525 @@ void MarkdownEdit::duplicateTableColumn(QTextTable *table, const QTextCursor &at
     for (int r = 0; r < table->rows(); ++r) {
         QTextCursor cc = table->cellAt(r, col + 1).firstCursorPosition();
         cc.insertText(texts.value(r));
+    }
+}
+
+bool MarkdownEdit::askTableSize(int *rows, int *cols)
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Insert Table"));
+    auto *form = new QFormLayout(&dlg);
+
+    auto *colSpin = new QSpinBox(&dlg);
+    colSpin->setRange(1, 20);
+    colSpin->setValue(*cols);
+    auto *rowSpin = new QSpinBox(&dlg);
+    rowSpin->setRange(1, 200);
+    rowSpin->setValue(*rows);
+    form->addRow(tr("Columns:"), colSpin);
+    form->addRow(tr("Rows (excluding header):"), rowSpin);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    if (dlg.exec() != QDialog::Accepted)
+        return false;
+    *cols = colSpin->value();
+    *rows = rowSpin->value();
+    return true;
+}
+
+void MarkdownEdit::insertEmptyTable(int bodyRows, int cols)
+{
+    // Nouveau tableau GFM vide (en-tête "Column N" + lignes vides) sur une NOUVELLE ligne située
+    // après la ligne du curseur (ou après le tableau si le curseur est déjà dans un tableau).
+    cols = qBound(1, cols, 50);
+    bodyRows = qBound(1, bodyRows, 500);
+
+    QStringList header, sep, empty;
+    for (int c = 0; c < cols; ++c) {
+        header << QStringLiteral("Column %1").arg(c + 1);
+        sep << QStringLiteral("---");
+        empty << QString();
+    }
+    auto line = [](const QStringList &cells) { return QStringLiteral("| ") + cells.join(QStringLiteral(" | ")) + QStringLiteral(" |"); };
+
+    QStringList lines{line(header), line(sep)};
+    for (int r = 0; r < bodyRows; ++r)
+        lines << line(empty);
+
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
+    openNewLineAfterCursor(cursor);
+    insertMarkdownTable(cursor, lines);
+    cursor.endEditBlock();
+
+    // Place le curseur dans la première cellule (même repérage que maybeConvertTypedTable).
+    QTextCursor probe(document());
+    probe.setPosition(qMax(0, cursor.position() - 1));
+    if (QTextTable *table = probe.currentTable())
+        setTextCursor(table->cellAt(0, 0).firstCursorPosition());
+    else
+        setTextCursor(cursor);
+
+    ensureCursorVisible();
+    noteModified = true;
+}
+
+void MarkdownEdit::insertCodeBlockOnNextLine()
+{
+    // Zone de code vide : ```, une ligne vide pour le contenu, ``` -- sur de nouvelles lignes
+    // après la ligne du curseur ; le curseur est placé dans la zone, prêt à taper.
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
+    openNewLineAfterCursor(cursor);
+    cursor.insertText(QStringLiteral("```"));
+    cursor.insertBlock(QTextBlockFormat(), QTextCharFormat());
+    const int inner = cursor.position();
+    cursor.insertBlock(QTextBlockFormat(), QTextCharFormat());
+    cursor.insertText(QStringLiteral("```"));
+    cursor.endEditBlock();
+
+    QTextCursor inside(document());
+    inside.setPosition(inner);
+    setTextCursor(inside);
+    ensureCursorVisible();
+    noteModified = true;
+}
+
+// ======================= Formats de texte (menu "Format") =======================
+
+void MarkdownEdit::applyInlineFormat(const QString &marker, int selStart, int selEnd)
+{
+    // Bascule un marqueur Markdown (**, *, __, ~~, ==, `, $) autour de la sélection, bloc par
+    // bloc : déjà entouré -> retire ; sinon -> entoure. Les espaces de bord sont laissés dehors
+    // (un "** gras **" ne serait pas interprété), les zones de code sont ignorées.
+    const QList<TextSegment> segs = selectionSegments(document(), selStart, selEnd);
+    if (segs.isEmpty())
+        return;
+
+    const int ml = marker.size();
+    const bool isStar = (marker == QLatin1String("*"));
+    const QChar objChar(QChar::ObjectReplacementCharacter);
+    const QChar sepChar(QChar::LineSeparator);
+
+    QTextCursor c(document());
+    int newStart = -1, newEnd = -1;
+    c.beginEditBlock();
+    for (const TextSegment &sg : segs) {
+        const QTextBlock b = sg.block;
+        if (isCodeLikeBlock(b))
+            continue;
+        const QString text = b.text();
+        int s = sg.s, e = sg.e;
+        while (s < e && text.at(s).isSpace())
+            ++s;
+        while (e > s && text.at(e - 1).isSpace())
+            --e;
+        if (e <= s)
+            continue;
+        const QString seg = text.mid(s, e - s);
+        if (seg.contains(objChar) || seg.contains(sepChar))
+            continue; // image / balise ![[..]] : on n'y touche pas
+
+        // Pour l'italique "*", un nombre PAIR d'étoiles collées appartient à un gras (**) : on ne
+        // le prend pas pour de l'italique.
+        const bool wrappedInside = seg.size() >= 2 * ml && seg.startsWith(marker) && seg.endsWith(marker)
+            && (!isStar || (starRunAfter(seg, 0) % 2 == 1 && starRunBefore(seg, seg.size()) % 2 == 1));
+        const bool wrappedOutside = !wrappedInside && s >= ml && e + ml <= text.size()
+            && text.mid(s - ml, ml) == marker && text.mid(e, ml) == marker
+            && (!isStar || (starRunBefore(text, s) % 2 == 1 && starRunAfter(text, e) % 2 == 1));
+
+        const int base = b.position();
+        auto replaceRange = [&](int from, int to, const QString &str) {
+            c.setPosition(base + from);
+            c.setPosition(base + to, QTextCursor::KeepAnchor);
+            c.insertText(str);
+        };
+
+        int ns, ne; // nouvelle plage du texte (sans marqueurs), relative au bloc
+        if (wrappedInside) {
+            const QString inner = seg.mid(ml, seg.size() - 2 * ml);
+            replaceRange(s, e, inner);
+            ns = s;
+            ne = s + inner.size();
+        } else if (wrappedOutside) {
+            replaceRange(s - ml, e + ml, seg);
+            ns = s - ml;
+            ne = ns + seg.size();
+        } else {
+            replaceRange(s, e, marker + seg + marker);
+            ns = s + ml;
+            ne = ns + seg.size();
+        }
+        if (newStart < 0)
+            newStart = base + ns;
+        newEnd = base + ne;
+    }
+    c.endEditBlock();
+
+    if (newStart >= 0) {
+        QTextCursor sel(document());
+        sel.setPosition(newStart);
+        sel.setPosition(newEnd, QTextCursor::KeepAnchor);
+        setTextCursor(sel);
+    }
+}
+
+void MarkdownEdit::applyBlockFormat(BlockFormatKind kind, int selStart, int selEnd)
+{
+    // Titre (# .. #####), citation, liste à puces / numérotée / de tâches : préfixe de ligne
+    // des blocs touchés par la sélection. Même format déjà présent partout -> il est retiré.
+    struct Item { QTextBlock block; int prefixLen; QString prefix; };
+    QList<Item> items;
+    for (const TextSegment &sg : selectionSegments(document(), selStart, selEnd)) {
+        if (isCodeLikeBlock(sg.block) || QTextCursor(sg.block).currentTable())
+            continue; // pas de titre/liste dans un code ni dans une cellule de tableau
+        const QRegularExpressionMatch m = blockPrefixRe().match(sg.block.text());
+        items.append({sg.block, m.hasMatch() ? int(m.capturedLength()) : 0, m.hasMatch() ? m.captured(0) : QString()});
+    }
+    if (items.isEmpty())
+        return;
+
+    auto matchesKind = [kind](const QString &prefix) {
+        const QString p = prefix.trimmed();
+        if (kind >= BlockH1 && kind <= BlockH5)
+            return p == QString(int(kind), QLatin1Char('#'));
+        switch (kind) {
+        case BlockQuote:    return p.startsWith(QLatin1Char('>'));
+        case BlockBullet:   return p == QLatin1String("-") || p == QLatin1String("*") || p == QLatin1String("+");
+        case BlockNumbered: return !p.isEmpty() && p.at(0).isDigit();
+        case BlockTask:     return p.startsWith(QLatin1Char('-')) && p.contains(QLatin1Char('['));
+        default:            return false;
+        }
+    };
+    bool allMatch = (kind != BlockParagraph);
+    for (const Item &it : items)
+        allMatch = allMatch && matchesKind(it.prefix);
+    const bool remove = (kind == BlockParagraph) || allMatch;
+
+    QTextCursor c(document());
+    c.beginEditBlock();
+    int number = 1;
+    for (const Item &it : items) {
+        QString newPrefix;
+        if (!remove) {
+            if (kind >= BlockH1 && kind <= BlockH5)
+                newPrefix = QString(int(kind), QLatin1Char('#')) + QLatin1Char(' ');
+            else if (kind == BlockQuote)
+                newPrefix = QStringLiteral("> ");
+            else if (kind == BlockBullet)
+                newPrefix = QStringLiteral("- ");
+            else if (kind == BlockNumbered)
+                newPrefix = QStringLiteral("%1. ").arg(number++);
+            else if (kind == BlockTask)
+                newPrefix = QStringLiteral("- [ ] ");
+        }
+        if (it.prefixLen == 0 && newPrefix.isEmpty())
+            continue;
+        const int pos = it.block.position();
+        c.setPosition(pos);
+        c.setPosition(pos + it.prefixLen, QTextCursor::KeepAnchor);
+        c.insertText(newPrefix);
+    }
+    c.endEditBlock();
+
+    QTextCursor sel(document());
+    sel.setPosition(items.first().block.position());
+    const QTextBlock last = items.last().block;
+    sel.setPosition(last.position() + last.length() - 1, QTextCursor::KeepAnchor);
+    setTextCursor(sel);
+}
+
+void MarkdownEdit::clearTextFormatting(int selStart, int selEnd)
+{
+    // Retire les marqueurs inline (gras, italique, souligné, barré, surligné, code) contenus dans
+    // la sélection, ainsi que le préfixe de bloc (titre, citation, liste) des lignes dont le
+    // début est sélectionné.
+    static const QList<QRegularExpression> inlineRes = {
+        QRegularExpression(QStringLiteral(R"(\*\*\*(.+?)\*\*\*)")),
+        QRegularExpression(QStringLiteral(R"(\*\*(.+?)\*\*)")),
+        QRegularExpression(QStringLiteral(R"(__(.+?)__)")),
+        QRegularExpression(QStringLiteral(R"(~~(.+?)~~)")),
+        QRegularExpression(QStringLiteral(R"(==(.+?)==)")),
+        QRegularExpression(QStringLiteral(R"(\*(.+?)\*)")),
+        QRegularExpression(QStringLiteral(R"(`(.+?)`)")),
+    };
+    const QChar objChar(QChar::ObjectReplacementCharacter);
+    const QChar sepChar(QChar::LineSeparator);
+
+    QTextCursor c(document());
+    int newStart = -1, newEnd = -1;
+    c.beginEditBlock();
+    for (const TextSegment &sg : selectionSegments(document(), selStart, selEnd)) {
+        const QTextBlock b = sg.block;
+        if (isCodeLikeBlock(b))
+            continue;
+        const QString seg = b.text().mid(sg.s, sg.e - sg.s);
+        if (seg.contains(objChar) || seg.contains(sepChar))
+            continue;
+
+        QString out = seg;
+        for (const QRegularExpression &re : inlineRes)
+            out.replace(re, QStringLiteral("\\1"));
+        if (sg.s == 0 && !QTextCursor(b).currentTable()) {
+            const QRegularExpressionMatch m = blockPrefixRe().match(out);
+            if (m.hasMatch())
+                out.remove(0, m.capturedLength());
+        }
+
+        const int base = b.position();
+        if (out != seg) {
+            c.setPosition(base + sg.s);
+            c.setPosition(base + sg.e, QTextCursor::KeepAnchor);
+            c.insertText(out);
+        }
+        if (newStart < 0)
+            newStart = base + sg.s;
+        newEnd = base + sg.s + out.size();
+    }
+    c.endEditBlock();
+
+    if (newStart >= 0) {
+        QTextCursor sel(document());
+        sel.setPosition(newStart);
+        sel.setPosition(newEnd, QTextCursor::KeepAnchor);
+        setTextCursor(sel);
+    }
+}
+
+// ======================= Résultat d'une commande exécutée depuis la note (v2.6.0) =======================
+
+namespace {
+// Lignes du résultat, prêtes à être insérées. Une ligne qui commencerait par ``` fermerait la zone de
+// code : on lui préfixe une espace de largeur nulle (qui n'est pas retirée par trimmed()).
+QStringList commandOutputLines(const QString &output)
+{
+    QStringList lines = QString(output).replace(QStringLiteral("\r\n"), QStringLiteral("\n"))
+                            .replace(QLatin1Char('\r'), QLatin1Char('\n')).split(QLatin1Char('\n'));
+    while (!lines.isEmpty() && lines.first().trimmed().isEmpty())
+        lines.removeFirst();
+    while (!lines.isEmpty() && lines.last().trimmed().isEmpty())
+        lines.removeLast();
+    for (QString &l : lines) {
+        if (l.trimmed().startsWith(QStringLiteral("```")))
+            l.prepend(QChar(0x200B));
+    }
+    return lines;
+}
+}
+
+QTextCursor MarkdownEdit::markCommandLine() const
+{
+    return QTextCursor(textCursor().block());
+}
+
+int MarkdownEdit::commandOccurrence() const
+{
+    const QTextBlock cur = textCursor().block();
+    const QString cmd = cur.text().trimmed();
+    int n = 0;
+    for (QTextBlock b = document()->begin(); b.isValid() && b != cur; b = b.next()) {
+        if (b.text().trimmed() == cmd)
+            ++n;
+    }
+    return n;
+}
+
+bool MarkdownEdit::insertCommandOutputAfter(const QTextCursor &mark, const QString &command, const QString &output)
+{
+    const QStringList lines = commandOutputLines(output);
+    if (lines.isEmpty())
+        return false;
+
+    // La ligne repérée a pu être modifiée ou déplacée pendant l'exécution : si son texte n'est
+    // plus la commande, on prend la ligne identique la plus proche ; à défaut, on garde le repère.
+    const QString cmd = command.trimmed();
+    QTextBlock b = mark.block();
+    if (!b.isValid() || b.text().trimmed() != cmd) {
+        const int ref = b.isValid() ? b.position() : 0;
+        QTextBlock best;
+        int bestDist = INT_MAX;
+        for (QTextBlock x = document()->begin(); x.isValid(); x = x.next()) {
+            if (x.text().trimmed() != cmd)
+                continue;
+            const int d = qAbs(x.position() - ref);
+            if (d < bestDist) {
+                best = x;
+                bestDist = d;
+            }
+        }
+        if (best.isValid())
+            b = best;
+        else if (!b.isValid())
+            return false;
+    }
+
+    // Commande déjà dans une zone ``` : le résultat s'ajoute tel quel (pas de ``` imbriqués).
+    const bool inCode = MarkdownHighlighter::isCodeBlockState(b.userState())
+                        && !MarkdownHighlighter::isFenceLineText(b.text().trimmed());
+    QStringList all = lines;
+    if (!inCode) {
+        all.prepend(QStringLiteral("```"));
+        all.append(QStringLiteral("```"));
+    }
+
+    // Point d'insertion : fin de la ligne (ou du tableau qui la contient).
+    QTextCursor cursor(b);
+    int insertAt = b.position() + b.length() - 1;
+    if (QTextTable *table = cursor.currentTable())
+        insertAt = table->lastPosition() + 1;
+
+    // Curseur / défilement de l'utilisateur : conservés (un curseur situé en fin de ligne serait
+    // sinon repoussé après le texte inséré).
+    const QTextCursor user = textCursor();
+    int userPos = user.position(), userAnchor = user.anchor();
+    const int scrollValue = verticalScrollBar()->value();
+    const int before = document()->characterCount();
+
+    cursor.beginEditBlock();
+    openNewLineAfterCursor(cursor);
+    for (int i = 0; i < all.size(); ++i) {
+        if (i > 0)
+            cursor.insertBlock(QTextBlockFormat(), QTextCharFormat());
+        cursor.insertText(all.at(i));
+    }
+    cursor.endEditBlock();
+
+    const int delta = document()->characterCount() - before;
+    if (userPos > insertAt)
+        userPos += delta;
+    if (userAnchor > insertAt)
+        userAnchor += delta;
+    // (un curseur situé exactement en fin de ligne est repoussé par Qt après le texte inséré :
+    // on remet donc toujours la position calculée si elle diffère)
+    if (textCursor().position() != userPos || textCursor().anchor() != userAnchor) {
+        QTextCursor restored(document());
+        restored.setPosition(userAnchor);
+        restored.setPosition(userPos, QTextCursor::KeepAnchor);
+        setTextCursor(restored);
+    }
+    verticalScrollBar()->setValue(scrollValue);
+    noteModified = true;
+    return true;
+}
+
+bool MarkdownEdit::insertCommandOutputInFile(const QString &fileName, const QString &command,
+                                             int occurrence, const QString &output)
+{
+    const QStringList outLines = commandOutputLines(output);
+    if (outLines.isEmpty())
+        return false;
+
+    QFile in(fileName);
+    if (!in.open(QIODevice::ReadOnly | QIODevice::Text))
+        return false;
+    QStringList lines;
+    {
+        QTextStream ts(&in);
+        ts.setEncoding(QStringConverter::Utf8);
+        lines = ts.readAll().split(QLatin1Char('\n'));
+    }
+    in.close();
+
+    // La commande est retrouvée par son texte (le fichier a pu être modifié depuis) : on prend la
+    // n-ième ligne identique (n = rang au moment du lancement), sinon la dernière ; si la ligne
+    // n'existe plus du tout, le résultat est ajouté à la fin de la fiche.
+    const QString cmd = command.trimmed();
+    QList<int> hits;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed() == cmd)
+            hits << i;
+    }
+
+    QStringList block = outLines;
+    int insertAfter;
+    if (hits.isEmpty()) {
+        if (!lines.isEmpty() && !lines.last().trimmed().isEmpty())
+            lines << QString();
+        insertAfter = lines.size() - 1;
+        block.prepend(QStringLiteral("```"));
+        block.append(QStringLiteral("```"));
+    } else {
+        const int idx = hits.at(qMin(qMax(occurrence, 0), hits.size() - 1));
+        bool inCode = false;
+        for (int i = 0; i < idx; ++i) {
+            if (MarkdownHighlighter::isFenceLineText(lines.at(i).trimmed()))
+                inCode = !inCode;
+        }
+        insertAfter = idx;
+        if (!inCode) {
+            // Ligne de tableau : le résultat va après le tableau, pas au milieu.
+            if (MarkdownHighlighter::isTableRowLine(lines.at(idx))) {
+                while (insertAfter + 1 < lines.size() && MarkdownHighlighter::isTableRowLine(lines.at(insertAfter + 1)))
+                    ++insertAfter;
+            }
+            block.prepend(QStringLiteral("```"));
+            block.append(QStringLiteral("```"));
+        }
+    }
+    for (int k = 0; k < block.size(); ++k)
+        lines.insert(insertAfter + 1 + k, block.at(k));
+
+    QFile out(fileName);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+        return false;
+    QTextStream os(&out);
+    os.setEncoding(QStringConverter::Utf8);
+    os << lines.join(QLatin1Char('\n'));
+    return true;
+}
+
+// ======================= Nom du langage d'une zone ``` (balises masquées) =======================
+
+void MarkdownEdit::paintEvent(QPaintEvent *event)
+{
+    QTextEdit::paintEvent(event);
+
+    // Zone ```bash dont le curseur est EN DEHORS : les ``` et "bash" sont transparents
+    // (cf. MarkdownHighlighter) ; on dessine ici "bash" en petit, à droite de la zone. Quand le
+    // curseur est dans la zone, la ligne "```bash" est affichée normalement, à gauche.
+    const int cursorPos = textCursor().position();
+    QAbstractTextDocumentLayout *layout = document()->documentLayout();
+    const QPointF offset(-horizontalScrollBar()->value(), -verticalScrollBar()->value());
+
+    QPainter p(viewport());
+    QFont f(QStringLiteral("Monospace"));
+    f.setStyleHint(QFont::Monospace);
+    f.setPointSizeF(7);
+    f.setItalic(true);
+    p.setFont(f);
+    p.setPen(QColor(150, 150, 150));
+
+    for (QTextBlock b = document()->findBlock(cursorForPosition(QPoint(0, 0)).position()); b.isValid(); b = b.next()) {
+        const QRectF r = layout->blockBoundingRect(b).translated(offset);
+        if (r.top() > viewport()->height())
+            break;
+        const QString t = b.text().trimmed();
+        // ligne OUVRANTE : ligne ``` dont l'état est "dans un bloc de code" (la fermante est Normal)
+        if (r.bottom() < 0 || !MarkdownHighlighter::isFenceLineText(t)
+            || !MarkdownHighlighter::isCodeBlockState(b.userState()))
+            continue;
+
+        int i = 0;
+        while (i < t.size() && t.at(i) == QLatin1Char('`'))
+            ++i;
+        const QString lang = t.mid(i).trimmed();
+        if (lang.isEmpty())
+            continue;
+
+        // plage de la zone : de la ligne ouvrante à la fin de la ligne fermante (incluse)
+        QTextBlock close = b.next();
+        while (close.isValid() && !MarkdownHighlighter::isFenceLineText(close.text().trimmed()))
+            close = close.next();
+        const int rangeEnd = close.isValid() ? close.position() + close.length() - 1 : document()->characterCount();
+        if (cursorPos >= b.position() && cursorPos <= rangeEnd)
+            continue; // curseur dans la zone : "```bash" est affiché normalement
+
+        const qreal right = qMin(r.right(), qreal(viewport()->width())) - 6;
+        p.drawText(QRectF(r.left(), r.top(), right - r.left(), r.height()),
+                   Qt::AlignRight | Qt::AlignVCenter, lang);
     }
 }
